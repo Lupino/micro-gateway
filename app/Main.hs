@@ -132,13 +132,14 @@ application getApp = do
   delete  matchAny . requireApp getApp $ verifySignature proxyDELETEHandler
   options matchAny optionsHandler
 
-  where policy = simpleCorsResourcePolicy { corsMethods = [ "GET", "POST", "PUT", "DELETE", "OPTIONS" ]
-                                          , corsRequestHeaders = [ "X-REQUEST-KEY"
-                                                                 , "X-REQUEST-SIGNATURE"
-                                                                 , "X-REQUEST-TIME"
-                                                                 , "X-REQUEST-TYPE"
-                                                                 , "X-REQUEST-NONCE"
-                                                                 , "Content-Type"
-                                                                 ]
-                                          , corsMaxAge = Just 86400
-                                          }
+  where policy = simpleCorsResourcePolicy
+                   { corsMethods = [ "GET", "POST", "PUT", "DELETE", "OPTIONS" ]
+                   , corsRequestHeaders = [ "X-REQUEST-KEY"
+                                          , "X-REQUEST-SIGNATURE"
+                                          , "X-REQUEST-TIME"
+                                          , "X-REQUEST-TYPE"
+                                          , "X-REQUEST-NONCE"
+                                          , "Content-Type"
+                                          ]
+                   , corsMaxAge = Just 86400
+                   }
