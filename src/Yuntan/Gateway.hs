@@ -3,12 +3,7 @@
 
 module Yuntan.Gateway
   (
-    Config (..)
-  , App (..)
-  , AppKey
-  , AppSecret
-  , ProxyHost
-  , ProxyPort
+    module Yuntan.Gateway.Types
   , requireApp
   , verifySignature
   , verifySignature'
@@ -20,62 +15,38 @@ module Yuntan.Gateway
   , optionsHandler
   ) where
 
-import           Control.Exception            (try)
-import           Control.Lens                 ((&), (.~), (^.))
-import           Control.Monad.IO.Class       (liftIO)
-import           Data.Aeson                   (Value (..), decode)
-import qualified Data.ByteString.Char8        as B (ByteString, append, concat,
-                                                    pack, unpack)
-import qualified Data.ByteString.Lazy         as LB (ByteString, empty,
-                                                     fromStrict, length,
-                                                     toStrict)
-import           Data.CaseInsensitive         (CI, original)
-import           Data.HashMap.Strict          (delete, insert, lookupDefault)
-import           Data.Hex                     (hex)
-import           Data.Int                     (Int64)
-import           Data.Maybe                   (fromMaybe)
-import           Data.String                  (IsString, fromString)
-import           Data.Text                    as T (Text, pack, toUpper, unpack)
-import qualified Data.Text.Lazy               as LT (Text, null, pack, toStrict,
-                                                     unpack)
-import           Network.HTTP.Client          (HttpException (..),
-                                               HttpExceptionContent (..))
-import           Network.HTTP.Client.Internal (Manager)
-import           Network.HTTP.Types           (ResponseHeaders, Status,
-                                               status204, status500, status504)
-import           Network.Wai                  (Request (..))
-import qualified Network.Wreq                 as Wreq
-import           System.Log.Logger            (errorM)
-import           Text.Read                    (readMaybe)
-import           Web.Scotty                   (ActionM, Param, RoutePattern,
-                                               body, function, header, param,
-                                               params, raw, request, rescue,
-                                               setHeader, status)
+import           Control.Exception      (try)
+import           Control.Lens           ((&), (.~), (^.))
+import           Control.Monad.IO.Class (liftIO)
+import           Data.Aeson             (Value (..), decode)
+import qualified Data.ByteString.Char8  as B (ByteString, append, concat, pack,
+                                              unpack)
+import qualified Data.ByteString.Lazy   as LB (ByteString, empty, fromStrict,
+                                               length, toStrict)
+import           Data.CaseInsensitive   (CI, original)
+import           Data.HashMap.Strict    (delete, insert, lookupDefault)
+import           Data.Hex               (hex)
+import           Data.Int               (Int64)
+import           Data.Maybe             (fromMaybe)
+import           Data.Text              as T (Text, pack, toUpper, unpack)
+import qualified Data.Text.Lazy         as LT (Text, null, pack, toStrict,
+                                               unpack)
+import           Network.HTTP.Client    (HttpException (..),
+                                         HttpExceptionContent (..))
+import           Network.HTTP.Types     (ResponseHeaders, status204, status500,
+                                         status504, statusCode)
+import           Network.Wai            (Request (..))
+import qualified Network.Wreq           as Wreq
+import           System.Log.Logger      (errorM)
+import           Text.Read              (readMaybe)
+import           Web.Scotty             (ActionM, Param, RoutePattern, body,
+                                         function, header, param, params, raw,
+                                         request, rescue, setHeader, status)
+import           Yuntan.Gateway.Types
 import           Yuntan.Gateway.Utils
-import           Yuntan.Utils.Scotty          (errBadRequest, errNotFound)
-import           Yuntan.Utils.Signature       (hmacSHA256, signJSON, signParams,
-                                               signRaw)
-
-
-type AppKey    = String
-type AppSecret = String
-type ProxyHost = String
-type ProxyPort = Int64
-
-data Config = Config
-  { appKey    :: AppKey
-  , appSecret :: AppSecret
-  , appHost   :: ProxyHost
-  , appPort   :: ProxyPort
-  , isSecure  :: Bool
-  }
-
-data App = App
-  { config         :: Config
-  , isKeyOnPath    :: Bool
-  , getManger      :: Manager
-  , afterRequested :: Int64 -> Status -> ActionM ()
-  }
+import           Yuntan.Utils.Scotty    (errBadRequest, errNotFound)
+import           Yuntan.Utils.Signature (hmacSHA256, signJSON, signParams,
+                                         signRaw)
 
 
 proxyPOSTHandler :: App -> ActionM ()
@@ -105,10 +76,11 @@ mergeResponseHeaders k ((n, v):xs) =
                 else mergeResponseHeaders k xs
 
 responseWreq :: App -> (Wreq.Options -> String -> IO (Wreq.Response LB.ByteString)) -> ActionM ()
-responseWreq app@App{isKeyOnPath=isOnPath, getManger=mgr} req = do
+responseWreq app@App{isKeyOnPath=isOnPath} req = do
+  liftIO . beforeRequest app =<< request
   uri <- dropKeyFromPath isOnPath <$> param "rawuri"
-  opts <- getWreqOptions mgr
-  e <- liftIO . try $ req opts (getUri app uri)
+  opts <- getWreqOptions
+  e <- liftIO . try $ doRequest app req opts uri
   case e of
     Left (HttpExceptionRequest _ content) ->
       case content of
@@ -142,7 +114,7 @@ responseWreq app@App{isKeyOnPath=isOnPath, getManger=mgr} req = do
           setHeader "Content-Length" . LT.pack . show $ len
           mergeResponseHeaders ["Content-Type"] hdrs
           raw dat
-          afterRequested app len st
+          liftIO . afterRequest app len $ statusCode st
 
 mergeRequestHeaders :: [CI B.ByteString] -> ActionM Wreq.Options
 mergeRequestHeaders [] = return Wreq.defaults
@@ -153,33 +125,26 @@ mergeRequestHeaders (x:xs) = do
     Just hd -> return $ hdrs & Wreq.header x .~ [t2b hd]
     Nothing -> return hdrs
 
-getWreqOptions :: Manager -> ActionM Wreq.Options
-getWreqOptions mgr = do
-  opts <- mergeRequestHeaders [ "Content-Type"
-                              , "User-Agent"
-                              , "X-REQUEST-KEY"
-                              , "X-Real-IP"
-                              , "Host"
-                              , "X-Forwarded-For"
-                              , "X-URI"
-                              , "X-Query-String"
-                              , "X-Scheme"
-                              ]
-
-
-  return $ opts & Wreq.manager .~ Right mgr
-
-getUri :: App -> String -> String
-getUri App{config=Config{appHost=host, appPort=port}} uri = base ++ uri
-  where base = "http://" ++ host ++ ":" ++ show port
+getWreqOptions :: ActionM Wreq.Options
+getWreqOptions = do
+  mergeRequestHeaders [ "Content-Type"
+                      , "User-Agent"
+                      , "X-REQUEST-KEY"
+                      , "X-Real-IP"
+                      , "Host"
+                      , "X-Forwarded-For"
+                      , "X-URI"
+                      , "X-Query-String"
+                      , "X-Scheme"
+                      ]
 
 verifySignature' :: (App -> ActionM()) -> App -> ActionM ()
-verifySignature' proxy app@App{config=Config{isSecure=secure}} =
+verifySignature' proxy app@App{isSecure=secure} =
   if secure then verifySignature proxy app
             else proxy app
 
 verifySignature :: (App -> ActionM ()) -> App -> ActionM ()
-verifySignature proxy app@App{config=Config{appSecret=sec, appKey=key}, isKeyOnPath=isOnPath}= do
+verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= do
   ct <- header "Content-Type"
   sec' <- signSecretKey $ B.pack sec
   case sec' of
@@ -294,13 +259,6 @@ headerOrParam hk pk = do
   case hv of
     Just hv' -> return hv'
     Nothing  -> param pk `rescue` const (return "")
-
-takeKeyFromPath :: String -> String
-takeKeyFromPath path = takeWhile (/= '/') (drop 1 path)
-
-dropKeyFromPath :: IsString a => Bool -> String -> a
-dropKeyFromPath True path  = fromString $ dropWhile (/= '/') (drop 1 path)
-dropKeyFromPath False path = fromString path
 
 requireApp :: (AppKey -> IO (Maybe App)) -> (App -> ActionM ()) -> ActionM ()
 requireApp getApp proxy = do
