@@ -34,7 +34,7 @@ import           Network.HTTP.Client    (HttpException (..),
                                          HttpExceptionContent (..))
 import           Network.HTTP.Types     (ResponseHeaders, status204, status500,
                                          status504, statusCode)
-import           Network.Wai            (Request (..))
+import           Network.Wai            (Request (rawPathInfo, rawQueryString, requestMethod))
 import qualified Network.Wreq           as Wreq
 import           System.Log.Logger      (errorM)
 import           Text.Read              (readMaybe)
