@@ -44,7 +44,7 @@ import           Web.Scotty             (ActionM, Param, RoutePattern, body,
                                          request, rescue, setHeader, status)
 import           Yuntan.Gateway.Types
 import           Yuntan.Gateway.Utils
-import           Yuntan.Utils.Scotty    (errBadRequest, errNotFound)
+import           Yuntan.Utils.Scotty    (err, errBadRequest, errNotFound)
 import           Yuntan.Utils.Signature (hmacSHA256, signJSON, signParams,
                                          signRaw)
 
@@ -76,8 +76,14 @@ mergeResponseHeaders k ((n, v):xs) =
                 else mergeResponseHeaders k xs
 
 responseWreq :: App -> (Wreq.Options -> String -> IO (Wreq.Response LB.ByteString)) -> ActionM ()
-responseWreq app@App{isKeyOnPath=isOnPath} req = do
-  liftIO . beforeRequest app =<< request
+responseWreq app req = do
+  ret <- liftIO . beforeRequest app =<< request
+  case ret of
+    Left e  -> err status500 e
+    Right _ -> responseWreq' app req
+
+responseWreq' :: App -> (Wreq.Options -> String -> IO (Wreq.Response LB.ByteString)) -> ActionM ()
+responseWreq' app@App{isKeyOnPath=isOnPath} req = do
   uri <- dropKeyFromPath isOnPath <$> param "rawuri"
   opts <- getWreqOptions
   e <- liftIO . try $ doRequest app req opts uri

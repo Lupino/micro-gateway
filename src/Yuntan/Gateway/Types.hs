@@ -25,7 +25,7 @@ data App = App
   , isSecure      :: Bool
   , doRequest     :: (Options -> String -> IO (Response LB.ByteString))
                   -> Options -> String -> IO (Response LB.ByteString)
-  , beforeRequest :: Request -> IO ()
+  , beforeRequest :: Request -> IO (Either String ())
   , afterRequest  :: Int64 -> Int -> IO ()
   -- afterRequest contentLength statusCode
   }
@@ -35,7 +35,7 @@ newApp :: AppKey -> AppSecret -> Bool -> App
 newApp appKey appSecret isSecure = App
   { isKeyOnPath = False
   , doRequest = error "no implement"
-  , beforeRequest = \_ -> pure ()
+  , beforeRequest = \_ -> pure $ Right ()
   , afterRequest = \_ _ -> pure ()
   , ..
   }
