@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
 
 module Yuntan.Gateway
   (
@@ -132,7 +131,7 @@ mergeRequestHeaders (x:xs) = do
     Nothing -> return hdrs
 
 getWreqOptions :: ActionM Wreq.Options
-getWreqOptions = do
+getWreqOptions =
   mergeRequestHeaders [ "Content-Type"
                       , "User-Agent"
                       , "X-REQUEST-KEY"
@@ -252,7 +251,7 @@ verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= 
         verifyTime :: String -> ActionM () -> ActionM ()
         verifyTime ts' next = do
           let ts = fromMaybe (0::Int64) $ readMaybe ts'
-          t <- liftIO $ getEpochTime
+          t <- liftIO getEpochTime
           if t - 300 < ts then next
                           else errorTimeout
 
