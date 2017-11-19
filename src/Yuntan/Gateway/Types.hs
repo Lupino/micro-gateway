@@ -6,7 +6,11 @@ module Yuntan.Gateway.Types
     App (..)
   , AppKey
   , AppSecret
+  , Domain
   , newApp
+
+  , Provider (..)
+  , newProvider
   ) where
 
 
@@ -17,6 +21,7 @@ import           Network.Wreq         (Options, Response)
 
 type AppKey    = String
 type AppSecret = String
+type Domain    = String
 
 data App = App
   { appKey        :: AppKey
@@ -38,4 +43,21 @@ newApp appKey appSecret isSecure = App
   , beforeRequest = \_ -> pure $ Right ()
   , afterRequest = \_ _ -> pure ()
   , ..
+  }
+
+
+data Provider = Provider
+  { getAppByKey    :: AppKey -> IO (Maybe App)
+  , getAppByDomain :: Domain -> IO (Maybe App)
+  , isValidDomain  :: Domain -> Bool
+  , isValidKey     :: AppKey -> Bool
+  }
+
+
+newProvider :: Provider
+newProvider = Provider
+  { getAppByKey    = const $ pure Nothing
+  , getAppByDomain = const $ pure Nothing
+  , isValidDomain  = const False
+  , isValidKey     = not . null
   }

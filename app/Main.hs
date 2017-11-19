@@ -95,7 +95,9 @@ program Options'{getConfigFile=configPath} = do
             , managerResponseTimeout = responseTimeoutMicro $ connTimeout * 10000000
             }
 
-  scottyOpts opts . application $ getAppAndInitail mgr appList
+  scottyOpts opts . application $ newProvider
+    { getAppByKey = getAppAndInitail mgr appList
+    }
 
 findApp :: [AppConfig] -> AppKey -> Maybe AppConfig
 findApp [] _ = Nothing
@@ -122,14 +124,14 @@ processRequest mgr root req opts uri = do
   req opts' url
 
 
-application :: (AppKey -> IO (Maybe App)) -> ScottyM ()
-application getApp = do
+application :: Provider -> ScottyM ()
+application provider = do
   middleware $ cors (const $ Just policy)
 
-  get     matchAny . requireApp getApp $ verifySignature' proxyGETHandler
-  post    matchAny . requireApp getApp $ verifySignature proxyPOSTHandler
-  put     matchAny . requireApp getApp $ verifySignature proxyPUTHandler
-  delete  matchAny . requireApp getApp $ verifySignature proxyDELETEHandler
+  get     matchAny . requireApp provider $ verifySignature' proxyGETHandler
+  post    matchAny . requireApp provider $ verifySignature proxyPOSTHandler
+  put     matchAny . requireApp provider $ verifySignature proxyPUTHandler
+  delete  matchAny . requireApp provider $ verifySignature proxyDELETEHandler
   options matchAny optionsHandler
 
   where policy = simpleCorsResourcePolicy

@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module Yuntan.Gateway
   (
@@ -265,21 +266,29 @@ headerOrParam hk pk = do
     Just hv' -> return hv'
     Nothing  -> param pk `rescue` const (return "")
 
-requireApp :: (AppKey -> IO (Maybe App)) -> (App -> ActionM ()) -> ActionM ()
-requireApp getApp proxy = do
+requireApp :: Provider -> (App -> ActionM ()) -> ActionM ()
+requireApp Provider{..} proxy = do
   key <- LT.unpack <$> headerOrParam "X-REQUEST-KEY" "key"
-  if null key then doGetAppFromPath
-              else doGetAppFromKey key
+  if isValidKey key then doGetAppFromKey key
+                    else doGetAppFromPath
   where doGetAppFromKey :: AppKey -> ActionM ()
-        doGetAppFromKey key = process key =<< liftIO (getApp key)
+        doGetAppFromKey key = process key =<< liftIO (getAppByKey key)
 
         doGetAppFromPath :: ActionM ()
         doGetAppFromPath = do
           key <- takeKeyFromPath <$> param "pathname"
-          app <- liftIO $ getApp key
-          case app of
-            Nothing   -> errorRequired
-            Just app' -> proxy app' {isKeyOnPath=True}
+          if isValidKey key then do
+            app <- liftIO $ getAppByKey key
+            case app of
+              Nothing   -> errNotFound key
+              Just app' -> proxy app' {isKeyOnPath=True}
+          else doGetAppByDomain
+
+        doGetAppByDomain :: ActionM ()
+        doGetAppByDomain = do
+          host <- LT.unpack . fromMaybe "" <$> header "Host"
+          if isValidDomain host then process host =<< liftIO (getAppByDomain host)
+                                else errorRequired
 
         process :: String -> Maybe App -> ActionM ()
         process n Nothing    = errorNotFound n
