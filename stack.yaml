@@ -39,7 +39,7 @@ packages:
 - .
 - location:
     git: https://github.com/Lupino/yuntan-common.git
-    commit: 56ae375169c3735ac5c5e5cfc875fa8c758fbc62
+    commit: b17dde04a4ade852385213118d71ac78fedae659
   extra-dep: true
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
