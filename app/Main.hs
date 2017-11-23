@@ -61,7 +61,7 @@ data Config = Config
 instance FromJSON AppConfig where
   parseJSON = withObject "AppConfig" $ \o -> do
     key     <- o .:  "key"
-    secret  <- o .:  "secure"
+    secret  <- o .:  "secret"
     baseUrl <- o .:  "baseUrl"
     secure  <- o .:? "secure" .!= False
     return AppConfig{..}
