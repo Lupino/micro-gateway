@@ -23,7 +23,8 @@ library
                      , time
                      , text
                      , scotty
-                     , yuntan-common
+                     , yuntan-common-scotty
+                     , yuntan-common-signature
                      , bytestring
                      , http-types
                      , aeson
