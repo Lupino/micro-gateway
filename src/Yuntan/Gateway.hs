@@ -18,7 +18,7 @@ module Yuntan.Gateway
 import           Control.Exception      (try)
 import           Control.Lens           ((&), (.~), (^.))
 import           Control.Monad.IO.Class (liftIO)
-import           Data.Aeson             (Value (..), decode)
+import           Data.Aeson             (Value (..), decode, toJSON)
 import qualified Data.ByteString.Char8  as B (ByteString, append, concat, pack,
                                               unpack)
 import qualified Data.ByteString.Lazy   as LB (ByteString, empty, fromStrict,
@@ -152,7 +152,7 @@ verifySignature' proxy app@App{isSecure=secure} =
 verifySignature :: (App -> ActionM ()) -> App -> ActionM ()
 verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= do
   ct <- header "Content-Type"
-  sec' <- signSecretKey $ B.pack sec
+  sec' <- signSecretKey . B.pack $ show sec
   case sec' of
     Left e -> errBadRequest e
     Right secret ->
@@ -175,7 +175,7 @@ verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= 
               let (String sign) = lookupDefault (String hsign) "sign" v
                   (String ts) = lookupDefault (String hts) "timestamp" v
                   v' = delete "sign" $ insert "timestamp" (String ts)
-                                     $ insert "key" (String $ T.pack key)
+                                     $ insert "key" (toJSON key)
                                      $ insert "pathname" (String sp) v
                   exceptSign = signJSON secret (Object v')
 
@@ -194,7 +194,7 @@ verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= 
           timestamp <- headerOrParam "X-REQUEST-TIME" "timestamp"
           sp <- dropKeyFromPath isOnPath <$> param "pathname"
           wb <- body
-          let exceptSign = signRaw secret [ ("key", B.pack key)
+          let exceptSign = signRaw secret [ ("key", B.pack $ show key)
                                           , ("timestamp", t2b timestamp)
                                           , ("raw", LB.toStrict wb)
                                           , ("pathname", sp)
@@ -208,7 +208,7 @@ verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= 
           timestamp <- headerOrParam "X-REQUEST-TIME" "timestamp"
           vv <- params
           sp <- dropKeyFromPath isOnPath <$> param "pathname"
-          let exceptSign = signParams secret $ set "key" (LT.pack key)
+          let exceptSign = signParams secret $ set "key" (LT.pack $ show key)
                                              $ set "timestamp" timestamp
                                              $ set "pathname" sp
                                              $ remove "sign"
@@ -268,7 +268,7 @@ headerOrParam hk pk = do
 
 requireApp :: Provider -> (App -> ActionM ()) -> ActionM ()
 requireApp Provider{..} proxy = do
-  key <- LT.unpack <$> headerOrParam "X-REQUEST-KEY" "key"
+  key <- AppKey . LT.unpack <$> headerOrParam "X-REQUEST-KEY" "key"
   if isValidKey key then doGetAppFromKey key
                     else doGetAppFromPath
   where doGetAppFromKey :: AppKey -> ActionM ()
@@ -276,29 +276,29 @@ requireApp Provider{..} proxy = do
 
         doGetAppFromPath :: ActionM ()
         doGetAppFromPath = do
-          key <- takeKeyFromPath <$> param "pathname"
+          key <- AppKey . takeKeyFromPath <$> param "pathname"
           if isValidKey key then do
             app <- liftIO $ getAppByKey key
             case app of
-              Nothing   -> errNotFound key
+              Nothing   -> errorNotFound key
               Just app' -> proxy app' {isKeyOnPath=True}
           else doGetAppByDomain
 
         doGetAppByDomain :: ActionM ()
         doGetAppByDomain = do
-          host <- LT.unpack . fromMaybe "" <$> header "Host"
+          host <- Domain . LT.unpack . fromMaybe "" <$> header "Host"
           if isValidDomain host then process host =<< liftIO (getAppByDomain host)
                                 else errorRequired
 
-        process :: String -> Maybe App -> ActionM ()
+        process :: Show a => a -> Maybe App -> ActionM ()
         process n Nothing    = errorNotFound n
         process _ (Just app) = proxy app
 
         errorRequired :: ActionM ()
         errorRequired = errBadRequest "KEY is required."
 
-        errorNotFound :: AppKey -> ActionM ()
-        errorNotFound key = errNotFound $ "APP " ++ key ++ " is not found."
+        errorNotFound :: Show a => a -> ActionM ()
+        errorNotFound d = errNotFound $ "APP " ++ show d ++ " is not found."
 
 matchAny :: RoutePattern
 matchAny = function $ \req ->

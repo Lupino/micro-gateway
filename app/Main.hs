@@ -42,8 +42,8 @@ parser = Options' <$> strOption (long "config"
                                 <> value "config.yaml")
 
 data AppConfig = AppConfig
-  { key     :: String
-  , secret  :: String
+  { key     :: AppKey
+  , secret  :: AppSecret
   , baseUrl :: String
   , secure  :: Bool
   }
