@@ -13,14 +13,13 @@ module Yuntan.Gateway.Types
   , newProvider
   ) where
 
-import           Data.Aeson            (FromJSON (..), ToJSON (..), withText)
-import qualified Data.ByteString.Char8 as B (pack)
-import qualified Data.ByteString.Lazy  as LB (ByteString)
-import           Data.Int              (Int64)
-import           Data.String           (IsString (..))
-import qualified Data.Text             as T (unpack)
-import           Network.Wai           (Request (..))
-import           Network.Wreq          (Options, Response)
+import           Data.Aeson           (FromJSON (..), ToJSON (..), withText)
+import qualified Data.ByteString.Lazy as LB (ByteString)
+import           Data.Int             (Int64)
+import           Data.String          (IsString (..))
+import qualified Data.Text            as T (unpack)
+import           Network.Wai          (Request (..))
+import           Network.Wreq         (Options, Response)
 
 newtype AppKey    = AppKey String
   deriving (Eq)
