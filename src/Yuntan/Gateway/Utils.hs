@@ -9,13 +9,17 @@ module Yuntan.Gateway.Utils
   ) where
 
 import qualified Data.ByteString    as B (ByteString)
+import           Data.Int           (Int64)
 import           Data.String        (IsString, fromString)
 import           Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import qualified Data.Text.Lazy     as LT (Text, fromStrict, toStrict)
 import           Data.UnixTime
+import           Foreign.C.Types    (CTime (..))
 
-getEpochTime :: Read a => IO a
-getEpochTime = read . show . toEpochTime <$> getUnixTime
+getEpochTime :: Num a => IO a
+getEpochTime = fromIntegral . un . toEpochTime <$> getUnixTime
+  where un :: CTime -> Int64
+        un (CTime t) = t
 
 b2t :: B.ByteString -> LT.Text
 b2t = LT.fromStrict . decodeUtf8
