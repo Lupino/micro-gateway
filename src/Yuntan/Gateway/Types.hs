@@ -65,15 +65,16 @@ instance ToJSON Domain where
   toJSON (Domain d) = toJSON d
 
 data App = App
-  { appKey        :: AppKey
-  , appSecret     :: AppSecret
-  , isKeyOnPath   :: Bool
-  , isSecure      :: Bool
-  , doRequest     :: (Options -> String -> IO (Response LB.ByteString))
-                  -> Options -> String -> IO (Response LB.ByteString)
-  , beforeRequest :: Request -> IO (Either String ())
-  , afterRequest  :: Int64 -> Int -> IO ()
+  { appKey         :: AppKey
+  , appSecret      :: AppSecret
+  , isKeyOnPath    :: Bool
+  , isSecure       :: Bool
+  , doRequest      :: (Options -> String -> IO (Response LB.ByteString))
+                   -> Options -> String -> IO (Response LB.ByteString)
+  , beforeRequest  :: Request -> IO (Either String ())
+  , afterRequest   :: Int64 -> Int -> IO ()
   -- afterRequest contentLength statusCode
+  , onErrorRequest :: IO ()
   }
 
 
@@ -83,6 +84,7 @@ newApp appKey appSecret isSecure = App
   , doRequest = error "no implement"
   , beforeRequest = \_ -> pure $ Right ()
   , afterRequest = \_ _ -> pure ()
+  , onErrorRequest = pure ()
   , ..
   }
 

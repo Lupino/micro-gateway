@@ -83,7 +83,7 @@ responseWreq app req = do
     Right _ -> responseWreq' app req
 
 responseWreq' :: App -> (Wreq.Options -> String -> IO (Wreq.Response LB.ByteString)) -> ActionM ()
-responseWreq' app@App{isKeyOnPath=isOnPath} req = do
+responseWreq' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
   uri <- dropKeyFromPath isOnPath <$> param "rawuri"
   opts <- getWreqOptions
   e <- liftIO . try $ doRequest app req opts uri
@@ -98,10 +98,12 @@ responseWreq' app@App{isKeyOnPath=isOnPath} req = do
         ResponseTimeout -> do
           status status504
           raw LB.empty
+          liftIO onError
         other -> do
           liftIO $ errorM "Yuntan.Gateway.Handler" (show other)
           status status500
           raw LB.empty
+          liftIO onError
 
     Left (InvalidUrlException _ _) -> do
       status status500
