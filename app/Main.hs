@@ -86,18 +86,21 @@ main = execParser opts >>= program
 
 program :: Options' -> IO ()
 program Options'{getConfigFile=configPath} = do
-  (Just Config{..}) <- Y.decodeFile configPath :: IO (Maybe Config)
-  let opts = def {settings = setPort port
-                           $ setHost (Host host) (settings def)}
+  c <- Y.decodeFileEither configPath
+  case c of
+    Left e     -> print e
+    Right Config{..} -> do
+      let opts = def {settings = setPort port
+                               $ setHost (Host host) (settings def)}
 
-  mgr <- newManager defaultManagerSettings
-            { managerConnCount = connPool
-            , managerResponseTimeout = responseTimeoutMicro $ connTimeout * 10000000
-            }
+      mgr <- newManager defaultManagerSettings
+                { managerConnCount = connPool
+                , managerResponseTimeout = responseTimeoutMicro $ connTimeout * 10000000
+                }
 
-  scottyOpts opts . application $ newProvider
-    { getAppByKey = getAppAndInitail mgr appList
-    }
+      scottyOpts opts . application $ newProvider
+        { getAppByKey = getAppAndInitail mgr appList
+        }
 
 findApp :: [AppConfig] -> AppKey -> Maybe AppConfig
 findApp [] _ = Nothing

@@ -28,7 +28,7 @@ import           Data.HashMap.Strict    (delete, insert, lookupDefault)
 import           Data.Hex               (hex)
 import           Data.Int               (Int64)
 import           Data.Maybe             (fromMaybe)
-import           Data.Text              as T (Text, pack, toUpper, unpack)
+import           Data.Text              as T (Text, toUpper, unpack)
 import qualified Data.Text.Lazy         as LT (Text, null, pack, toStrict,
                                                unpack)
 import           Network.HTTP.Client    (HttpException (..),
