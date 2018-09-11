@@ -228,7 +228,7 @@ verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= 
                 has k' ((k, _):xs) = (k' == k) || has k' xs
 
                 set :: LT.Text -> LT.Text -> [Param] -> [Param]
-                set k v vv = if has k vv then vv
+                set k v vv = if has k vv then set k v $ remove k vv
                                          else (k, v):vv
 
         signSecretKey :: B.ByteString -> ActionM (Either String B.ByteString)
