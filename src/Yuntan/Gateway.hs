@@ -160,11 +160,12 @@ verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= 
     Right secret ->
       case ct of
         Just "application/json"                  -> doVerifyJSON secret
-                                                  $ doVerifyParams secret
                                                   $ doVerifyRaw secret errorInvalidSignature
 
         Just "application/x-www-form-urlencoded" -> doVerifyParams secret errorInvalidSignature
-        _                                        -> doVerifyParams secret $ doVerifyRaw secret errorInvalidSignature
+        Just "application/octet-stream"          -> doVerifyRaw secret errorInvalidSignature
+        _                                        -> doVerifyParams secret
+                                                  $ doVerifyRaw secret errorInvalidSignature
 
   where doVerifyJSON :: B.ByteString -> ActionM () -> ActionM ()
         doVerifyJSON secret next = do
