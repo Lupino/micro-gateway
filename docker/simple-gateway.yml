@@ -1,0 +1,14 @@
+host: 0.0.0.0
+port: 3000
+connPool: 1000
+connTimeout: 300
+
+# xxd -g 2 -l 10 -p /dev/random | tr -d '\n'
+# xxd -g 2 -l 32 -p /dev/random | tr -d '\n'
+appList: []
+# appList:
+#   # coin
+#   - key: 47d4ad028e6deab9a59
+#     secret: c6b841d02f8261479fe8b891cad919fc399951a69a55b8996bc7922cf961acf2
+#     baseUrl: http://coin:3000
+#     secure: true
