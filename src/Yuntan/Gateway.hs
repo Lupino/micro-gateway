@@ -18,7 +18,8 @@ module Yuntan.Gateway
 import           Control.Exception      (try)
 import           Control.Lens           ((&), (.~), (^.))
 import           Control.Monad.IO.Class (liftIO)
-import           Data.Aeson             (Value (..), decode, toJSON)
+import           Data.Aeson             (Value (..), decode, object, toJSON,
+                                         (.=))
 import qualified Data.ByteString.Char8  as B (ByteString, append, concat, pack,
                                               unpack)
 import qualified Data.ByteString.Lazy   as LB (ByteString, empty, fromStrict,
@@ -33,21 +34,32 @@ import qualified Data.Text.Lazy         as LT (Text, null, pack, toStrict,
                                                unpack)
 import           Network.HTTP.Client    (HttpException (..),
                                          HttpExceptionContent (..))
-import           Network.HTTP.Types     (ResponseHeaders, status204, status500,
+import           Network.HTTP.Types     (ResponseHeaders, Status, status204,
+                                         status400, status404, status500,
                                          status504, statusCode)
 import           Network.Wai            (Request (rawPathInfo, rawQueryString, requestMethod))
 import qualified Network.Wreq           as Wreq
 import           System.Log.Logger      (errorM)
 import           Text.Read              (readMaybe)
 import           Web.Scotty             (ActionM, Param, RoutePattern, body,
-                                         function, header, param, params, raw,
-                                         request, rescue, setHeader, status)
+                                         function, header, json, param, params,
+                                         raw, request, rescue, setHeader,
+                                         status)
 import           Yuntan.Gateway.Types
 import           Yuntan.Gateway.Utils
-import           Yuntan.Utils.Scotty    (err, errBadRequest, errNotFound)
 import           Yuntan.Utils.Signature (hmacSHA256, signJSON, signParams,
                                          signRaw)
 
+
+
+err :: Status -> String -> ActionM ()
+err st msg = status st >> json (object ["err" .= msg])
+
+errBadRequest :: String -> ActionM ()
+errBadRequest = err status400
+
+errNotFound :: String -> ActionM ()
+errNotFound = err status404
 
 proxyPOSTHandler :: App -> ActionM ()
 proxyPOSTHandler app = do
