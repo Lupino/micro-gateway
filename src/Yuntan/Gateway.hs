@@ -36,7 +36,7 @@ import           Network.HTTP.Client    (HttpException (..),
                                          HttpExceptionContent (..))
 import           Network.HTTP.Types     (ResponseHeaders, Status, status204,
                                          status400, status404, status500,
-                                         status504, statusCode)
+                                         status502, status504, statusCode)
 import           Network.Wai            (Request (rawPathInfo, rawQueryString, requestMethod))
 import qualified Network.Wreq           as Wreq
 import           System.Log.Logger      (errorM)
@@ -113,7 +113,7 @@ responseWreq' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
           liftIO onError
         other -> do
           liftIO $ errorM "Yuntan.Gateway.Handler" (show other)
-          status status500
+          status status502
           raw LB.empty
           liftIO onError
 
