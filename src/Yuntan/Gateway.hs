@@ -89,7 +89,7 @@ mergeResponseHeaders k ((n, v):xs) =
 
 responseWreq :: App -> (Wreq.Options -> String -> IO (Wreq.Response LB.ByteString)) -> ActionM ()
 responseWreq app req = do
-  ret <- liftIO . beforeRequest app =<< request
+  ret <- liftIO . beforeRequest app (retryError app) =<< request
   case ret of
     Left e  -> err status500 e
     Right _ -> responseWreq' app req
@@ -113,9 +113,15 @@ responseWreq' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
           liftIO onError
         other -> do
           liftIO $ errorM "Yuntan.Gateway.Handler" (show other)
-          status status502
-          raw LB.empty
           liftIO onError
+          if maxRetry app <= 1 then do
+            status status502
+            raw LB.empty
+          else do
+            responseWreq (app
+              { maxRetry = maxRetry app - 1
+              , retryError = Just (show other)
+              }) req
 
     Left (InvalidUrlException _ _) -> do
       status status500

@@ -71,10 +71,14 @@ data App = App
   , isSecure       :: Bool
   , doRequest      :: (Options -> String -> IO (Response LB.ByteString))
                    -> Options -> String -> IO (Response LB.ByteString)
-  , beforeRequest  :: Request -> IO (Either String ())
+  , beforeRequest  :: Maybe String -> Request -> IO (Either String ())
+  -- beforeRequest retryError req
   , afterRequest   :: Int64 -> Int -> IO ()
   -- afterRequest contentLength statusCode
   , onErrorRequest :: IO ()
+  , maxRetry       :: Int
+  -- set the max retry on bad gateway error
+  , retryError     :: Maybe String
   }
 
 
@@ -82,9 +86,11 @@ newApp :: AppKey -> AppSecret -> Bool -> App
 newApp appKey appSecret isSecure = App
   { isKeyOnPath = False
   , doRequest = error "no implement"
-  , beforeRequest = \_ -> pure $ Right ()
+  , beforeRequest = \_ _ -> pure $ Right ()
   , afterRequest = \_ _ -> pure ()
   , onErrorRequest = pure ()
+  , maxRetry = 3
+  , retryError = Nothing
   , ..
   }
 
