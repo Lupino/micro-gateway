@@ -27,7 +27,6 @@ library
                      , bytestring
                      , http-types
                      , aeson
-                     , hex
                      , unix-time
                      , wai
                      , unordered-containers

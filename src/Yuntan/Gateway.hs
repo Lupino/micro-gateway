@@ -20,16 +20,15 @@ import           Control.Lens           ((&), (.~), (^.))
 import           Control.Monad.IO.Class (liftIO)
 import           Data.Aeson             (Value (..), decode, object, toJSON,
                                          (.=))
-import qualified Data.ByteString.Char8  as B (ByteString, append, concat, pack,
-                                              unpack)
+import qualified Data.ByteString.Char8  as B (ByteString, append, concat, pack)
 import qualified Data.ByteString.Lazy   as LB (ByteString, empty, fromStrict,
                                                length, toStrict)
-import           Data.CaseInsensitive   (CI, original)
+import           Data.CaseInsensitive   (CI, mk, original)
 import           Data.HashMap.Strict    (delete, insert, lookupDefault)
-import           Data.Hex               (hex)
 import           Data.Int               (Int64)
 import           Data.Maybe             (fromMaybe)
-import           Data.Text              as T (Text, toUpper, unpack)
+import           Data.Text              as T (Text, unpack)
+import           Data.Text.Encoding     (encodeUtf8)
 import qualified Data.Text.Lazy         as LT (Text, null, pack, toStrict,
                                                unpack)
 import           Network.HTTP.Client    (HttpException (..),
@@ -204,10 +203,10 @@ verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= 
 
             _ -> next
 
-        equalSign :: B.ByteString -> T.Text -> ActionM () -> ActionM ()
+        equalSign :: CI B.ByteString -> T.Text -> ActionM () -> ActionM ()
         equalSign except sign next =
-          if B.unpack except == T.unpack (T.toUpper sign) then proxy app
-                                                          else next
+          if except == mk (encodeUtf8 sign) then proxy app
+                                            else next
 
         doVerifyRaw :: B.ByteString -> ActionM () -> ActionM ()
         doVerifyRaw secret next = do
@@ -260,7 +259,8 @@ verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= 
               sp <- dropKeyFromPath isOnPath <$> param "pathname"
               method <- requestMethod <$> request
               if LT.null nonce then return (Left "Invalid REQUEST NONCE")
-                               else return . Right . hex . hmacSHA256 (t2b nonce) $ B.concat [secret, method, sp, t2b ts]
+                               else return . Right . original . hmacSHA256 (t2b nonce)
+                                      $ B.concat [secret, method, sp, t2b ts]
 
             _ -> return (Right secret)
 

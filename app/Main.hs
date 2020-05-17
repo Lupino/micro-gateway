@@ -28,7 +28,6 @@ import           Web.Scotty                      (ScottyM, delete, get,
                                                   put, scottyOpts, settings)
 import           Yuntan.Gateway
 
-import           Data.Semigroup                  ((<>))
 import qualified Data.Yaml                       as Y
 import           Options.Applicative
 
