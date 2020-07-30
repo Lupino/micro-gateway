@@ -17,6 +17,7 @@ module Yuntan.Gateway
 
 import           Control.Exception      (try)
 import           Control.Lens           ((&), (.~), (^.))
+import           Control.Monad          (when)
 import           Control.Monad.IO.Class (liftIO)
 import           Data.Aeson             (Value (..), decode, object, toJSON,
                                          (.=))
@@ -35,7 +36,8 @@ import           Network.HTTP.Client    (HttpException (..),
                                          HttpExceptionContent (..))
 import           Network.HTTP.Types     (ResponseHeaders, Status, status204,
                                          status400, status404, status500,
-                                         status502, status504, statusCode)
+                                         status502, status503, status504,
+                                         statusCode)
 import           Network.Wai            (Request (rawPathInfo, rawQueryString, requestMethod))
 import qualified Network.Wreq           as Wreq
 import           System.Log.Logger      (errorM)
@@ -106,6 +108,7 @@ responseWreq' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
               st   = r ^. Wreq.responseStatus
 
           output hdrs st $ LB.fromStrict dat
+          when (st == status500 || st == status502 || st == status504 || st == status503) $ liftIO onError
         ResponseTimeout -> do
           status status504
           raw LB.empty
