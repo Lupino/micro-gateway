@@ -108,7 +108,8 @@ responseWreq' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
               st   = r ^. Wreq.responseStatus
 
           output hdrs st $ LB.fromStrict dat
-          when (st == status500 || st == status502 || st == status504 || st == status503) $ liftIO onError
+          when (st == status502 || st == status504 || st == status503)
+            $ liftIO onError
         ResponseTimeout -> do
           status status504
           raw LB.empty
