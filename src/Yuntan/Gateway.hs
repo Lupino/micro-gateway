@@ -19,6 +19,8 @@ import           Control.Exception      (try)
 import           Control.Lens           ((&), (.~), (^.))
 import           Control.Monad          (when)
 import           Control.Monad.IO.Class (liftIO)
+import           Crypto.Signature       (hmacSHA256, signJSON, signParams,
+                                         signRaw)
 import           Data.Aeson             (Value (..), decode, object, toJSON,
                                          (.=))
 import qualified Data.ByteString.Char8  as B (ByteString, append, concat, pack)
@@ -48,8 +50,6 @@ import           Web.Scotty             (ActionM, Param, RoutePattern, body,
                                          status)
 import           Yuntan.Gateway.Types
 import           Yuntan.Gateway.Utils
-import           Yuntan.Utils.Signature (hmacSHA256, signJSON, signParams,
-                                         signRaw)
 
 
 
