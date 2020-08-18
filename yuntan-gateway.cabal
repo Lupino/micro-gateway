@@ -36,6 +36,8 @@ library
                      , lens
                      , hslogger
                      , websockets
+                     , stm
+                     , cookie
   default-language:    Haskell2010
 
 executable simple-gateway

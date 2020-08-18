@@ -11,6 +11,7 @@ import           Data.Aeson                      (FromJSON, parseJSON,
                                                   withObject, (.!=), (.:),
                                                   (.:?))
 import qualified Data.ByteString.Lazy            as LB (ByteString)
+import           Data.Maybe                      (fromMaybe)
 import           Data.Streaming.Network.Internal (HostPreference (Host))
 import           Network.HTTP.Client             (Manager,
                                                   defaultManagerSettings,
@@ -51,6 +52,7 @@ data AppConfig = AppConfig
   , baseUrl :: String
   , secure  :: Bool
   , proxy   :: Bool -- flag of only proxy
+  , wsUrl   :: Maybe String
   }
 
 data Config = Config
@@ -70,6 +72,7 @@ instance FromJSON AppConfig where
     baseUrl <- o .:  "baseUrl"
     secure  <- o .:? "secure" .!= False
     proxy   <- o .:? "proxy"  .!= False
+    wsUrl   <- o .:? "wsUrl"
     return AppConfig{..}
 
 instance FromJSON Config where
@@ -125,7 +128,7 @@ getAppAndInitail mgr configs k =
       let app = newApp key secret secure proxy
           app' = app
             { doRequest = processRequest mgr baseUrl
-            , prepareWsRequest = processWsRequest baseUrl
+            , prepareWsRequest = processWsRequest $ fromMaybe baseUrl wsUrl
             }
 
       return $ Just app'

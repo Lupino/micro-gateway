@@ -1,9 +1,9 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Yuntan.Gateway
-  (
-    module Yuntan.Gateway.Types
+  ( module Yuntan.Gateway.Types
   , requireApp
   , verifySignature
   , verifySignature'
@@ -16,50 +16,60 @@ module Yuntan.Gateway
   , wsProxyHandler
   ) where
 
-import           Control.Concurrent     (forkIO)
-import           Control.Exception      (try)
-import           Control.Lens           ((&), (.~), (^.))
-import           Control.Monad          (void, when)
-import           Control.Monad.IO.Class (liftIO)
-import           Crypto.Signature       (hmacSHA256, signJSON, signParams,
-                                         signRaw)
-import           Data.Aeson             (Value (..), decode, object, toJSON,
-                                         (.=))
-import qualified Data.ByteString.Char8  as B (ByteString, append,
-                                              breakSubstring, concat, drop,
-                                              dropWhile, null, pack, takeWhile,
-                                              unpack)
-import qualified Data.ByteString.Lazy   as LB (ByteString, empty, fromStrict,
-                                               length, toStrict)
-import           Data.CaseInsensitive   (CI, mk, original)
-import           Data.HashMap.Strict    (delete, insert, lookupDefault)
-import           Data.Int               (Int64)
-import           Data.Maybe             (fromMaybe)
-import           Data.Text              as T (Text, unpack)
-import           Data.Text.Encoding     (encodeUtf8)
-import qualified Data.Text.Lazy         as LT (Text, null, pack, toStrict,
-                                               unpack)
-import           Network.HTTP.Client    (HttpException (..),
-                                         HttpExceptionContent (..))
-import           Network.HTTP.Types     (ResponseHeaders, Status, status204,
-                                         status400, status404, status500,
-                                         status502, status503, status504,
-                                         statusCode)
-import           Network.Wai            (Request (rawPathInfo, rawQueryString, requestMethod))
-import qualified Network.WebSockets     as WS (Connection, Headers,
-                                               RequestHead (..), ServerApp,
-                                               acceptRequest,
-                                               defaultConnectionOptions,
-                                               pendingRequest, receive,
-                                               rejectRequest, runClientWith,
-                                               send)
-import qualified Network.Wreq           as Wreq
-import           System.Log.Logger      (errorM)
-import           Text.Read              (readMaybe)
-import           Web.Scotty             (ActionM, Param, RoutePattern, body,
-                                         function, header, json, param, params,
-                                         raw, request, rescue, setHeader,
-                                         status)
+
+import           Control.Concurrent            (forkIO, killThread, myThreadId)
+import           Control.Concurrent.STM.TChan  (newTChanIO, readTChan,
+                                                writeTChan)
+import           Control.Concurrent.STM.TVar   (newTVarIO, readTVar, readTVarIO,
+                                                writeTVar)
+import           Control.Exception             (SomeException, try)
+import           Control.Lens                  ((&), (.~), (^.))
+import           Control.Monad                 (forever, void, when)
+import           Control.Monad.IO.Class        (liftIO)
+import           Control.Monad.STM             (atomically)
+import           Crypto.Signature              (hmacSHA256, signJSON,
+                                                signParams, signRaw)
+import           Data.Aeson                    (Value (..), decode, object,
+                                                toJSON, (.=))
+import qualified Data.ByteString.Char8         as B (ByteString, append,
+                                                     breakSubstring, concat,
+                                                     drop, dropWhile, null,
+                                                     pack, takeWhile, unpack)
+import qualified Data.ByteString.Lazy          as LB (ByteString, empty,
+                                                      fromStrict, length,
+                                                      toStrict)
+import           Data.CaseInsensitive          (CI, mk, original)
+import           Data.HashMap.Strict           (delete, insert, lookupDefault)
+import           Data.Int                      (Int64)
+import           Data.Maybe                    (fromMaybe)
+import           Data.Text                     as T (Text, unpack)
+import           Data.Text.Encoding            (encodeUtf8)
+import qualified Data.Text.Lazy                as LT (Text, null, pack,
+                                                      toStrict, unpack)
+import           Network.HTTP.Client           (HttpException (..),
+                                                HttpExceptionContent (..))
+import           Network.HTTP.Types            (ResponseHeaders, Status,
+                                                status204, status400, status404,
+                                                status500, status502, status503,
+                                                status504, statusCode)
+import           Network.Wai                   (Request (rawPathInfo, rawQueryString, requestMethod))
+
+import qualified Network.WebSockets            as WS (Headers, RequestHead (..),
+                                                      ServerApp, acceptRequest,
+                                                      defaultConnectionOptions,
+                                                      pendingRequest,
+                                                      receiveDataMessage,
+                                                      rejectRequest,
+                                                      runClientWith,
+                                                      sendDataMessage)
+import           Network.WebSockets.Connection as WS (pingThread)
+import qualified Network.Wreq                  as Wreq
+import           System.Log.Logger             (errorM)
+import           Text.Read                     (readMaybe)
+import           Web.Scotty                    (ActionM, Param, RoutePattern,
+                                                body, function, header, json,
+                                                param, params, raw, request,
+                                                rescue, setHeader, status)
 import           Yuntan.Gateway.Types
 import           Yuntan.Gateway.Utils
 
@@ -352,6 +362,12 @@ getFromHeader [] _ = Nothing
 getFromHeader ((x, y):xs) k | x == k = Just y
                             | otherwise = getFromHeader xs k
 
+removeFromHeader :: CI B.ByteString -> WS.Headers -> WS.Headers
+removeFromHeader _ []         = []
+removeFromHeader k (h@(x,_):xs)
+  | x == k = xs
+  | otherwise = h : removeFromHeader k xs
+
 getParam :: B.ByteString -> B.ByteString -> Maybe B.ByteString
 getParam k = go . snd . B.breakSubstring k
   where go :: B.ByteString -> Maybe B.ByteString
@@ -464,11 +480,53 @@ wsProxyHandler Provider{..} pendingConn =
         runAction :: App -> IO ()
         runAction app = do
           conn <- WS.acceptRequest pendingConn
-          prepareWsRequest app $ \h p -> do
-            WS.runClientWith h p rawuri' WS.defaultConnectionOptions headers $ \pconn -> do
-              void $ forkIO $ pipeWS conn pconn
-              pipeWS pconn conn
-            where rawuri' = dropKeyFromPath (isKeyOnPath app) (B.unpack rawuri)
+          readChan  <- newTChanIO
+          writeChan <- newTChanIO
+          threads <- newTVarIO []
+          let addThread t = atomically $ do
+                xs <- readTVar threads
+                writeTVar threads (t:xs)
+              killThreads = do
+                xs <- readTVarIO threads
+                void . forkIO $ mapM_ killThread xs
 
-pipeWS :: WS.Connection -> WS.Connection -> IO ()
-pipeWS rConn sConn = WS.receive rConn >>= WS.send sConn
+          thread1 <- forkIO $ forever $ do
+            bs <- atomically $ readTChan writeChan
+            WS.sendDataMessage conn bs
+
+          addThread thread1
+
+          thread2 <- forkIO $ WS.pingThread conn 30 (return ())
+          addThread thread2
+
+          thread3 <- forkIO $ forever $ do
+            bs0 <- try $ WS.receiveDataMessage conn
+            print bs0
+            case bs0 of
+              Left (_ :: SomeException) -> killThreads
+              Right bs1 -> atomically $ writeTChan readChan bs1
+
+          addThread thread3
+
+          prepareWsRequest app $ \h p -> do
+            WS.runClientWith h p rawuri' WS.defaultConnectionOptions (removeFromHeader "Host" headers) $ \pconn -> do
+              thread4 <- forkIO $ forever $ do
+                bs <- atomically $ readTChan readChan
+                WS.sendDataMessage pconn bs
+
+              addThread thread4
+
+              thread5 <- forkIO $ WS.pingThread pconn 30 (return ())
+
+              addThread thread5
+
+              thread6 <- myThreadId
+              addThread thread6
+
+              forever $ do
+                bs0 <- try $ WS.receiveDataMessage pconn
+                case bs0 of
+                  Left (_ :: SomeException) -> killThreads
+                  Right bs1 -> atomically $ writeTChan writeChan bs1
+
+          where rawuri' = dropKeyFromPath (isKeyOnPath app) (B.unpack rawuri)
