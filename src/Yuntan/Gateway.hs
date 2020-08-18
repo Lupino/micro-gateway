@@ -308,7 +308,8 @@ requireApp Provider{..} proxy = doGetAppByDomain
   where doGetAppFromPath :: ActionM ()
         doGetAppFromPath = do
           key <- AppKey . takeKeyFromPath <$> param "pathname"
-          if isValidKey key then do
+          valid <- liftIO $ isValidKey key
+          if valid then do
             app <- liftIO $ getAppByKey key
             case app of
               Nothing   -> errorRequired
@@ -318,14 +319,16 @@ requireApp Provider{..} proxy = doGetAppByDomain
         doGetAppByDomain :: ActionM ()
         doGetAppByDomain = do
           host <- Domain . LT.unpack . fromMaybe "" <$> header "Host"
-          if isValidDomain host then process host =<< liftIO (getAppByDomain host)
-                                else doGetAppByHeaderOrParam
+          valid <- liftIO $ isValidDomain host
+          if valid then process host =<< liftIO (getAppByDomain host)
+                   else doGetAppByHeaderOrParam
 
         doGetAppByHeaderOrParam :: ActionM ()
         doGetAppByHeaderOrParam = do
           key <- AppKey . LT.unpack <$> headerOrParam "X-REQUEST-KEY" "key"
-          if isValidKey key then process key =<< liftIO (getAppByKey key)
-                            else doGetAppFromPath
+          valid <- liftIO $ isValidKey key
+          if valid then process key =<< liftIO (getAppByKey key)
+                   else doGetAppFromPath
 
         process :: Show a => a -> Maybe App -> ActionM ()
         process n Nothing    = errorNotFound n
@@ -413,13 +416,15 @@ wsProxyHandler Provider{..} pendingConn =
 
         withDomainOr ::  IO () -> IO ()
         withDomainOr tryNext = do
-          if isValidDomain host then process host =<< getAppByDomain host
-                                else tryNext
+          valid <- isValidDomain host
+          if valid then process host =<< getAppByDomain host
+                   else tryNext
 
         withKeyOr :: AppKey -> IO () -> IO ()
         withKeyOr k tryNext = do
-          if isValidKey k then process k =<< liftIO (getAppByKey k)
-                          else tryNext
+          valid <- isValidKey key
+          if valid then process k =<< liftIO (getAppByKey k)
+                   else tryNext
 
         verifySign :: AppKey -> B.ByteString -> Bool
         verifySign rkey secret = equalSign exceptSign

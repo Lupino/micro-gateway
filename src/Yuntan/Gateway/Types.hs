@@ -101,8 +101,8 @@ newApp appKey appSecret isSecure onlyProxy = App
 data Provider = Provider
   { getAppByKey    :: AppKey -> IO (Maybe App)
   , getAppByDomain :: Domain -> IO (Maybe App)
-  , isValidDomain  :: Domain -> Bool
-  , isValidKey     :: AppKey -> Bool
+  , isValidDomain  :: Domain -> IO Bool
+  , isValidKey     :: AppKey -> IO Bool
   }
 
 notNull :: AppKey -> Bool
@@ -112,6 +112,6 @@ newProvider :: Provider
 newProvider = Provider
   { getAppByKey    = const $ pure Nothing
   , getAppByDomain = const $ pure Nothing
-  , isValidDomain  = const False
-  , isValidKey     = notNull
+  , isValidDomain  = return . const False
+  , isValidKey     = return . notNull
   }
