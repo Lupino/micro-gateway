@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: lts-15.12
+resolver: lts-16.9
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -40,10 +40,7 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
-- git: https://github.com/Lupino/yuntan-common.git
-  commit: 350bda5b5dbb542e57a408c4a6618fd51d2070ea
-  subdirs:
-  - yuntan-common-signature
+- signature-0.1.1.0
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
