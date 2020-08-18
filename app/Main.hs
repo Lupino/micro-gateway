@@ -11,7 +11,6 @@ import           Data.Aeson                      (FromJSON, parseJSON,
                                                   withObject, (.!=), (.:),
                                                   (.:?))
 import qualified Data.ByteString.Lazy            as LB (ByteString)
-import           Data.Default.Class              (def)
 import           Data.Streaming.Network.Internal (HostPreference (Host))
 import           Network.HTTP.Client             (Manager,
                                                   defaultManagerSettings,
@@ -19,13 +18,19 @@ import           Network.HTTP.Client             (Manager,
                                                   managerResponseTimeout,
                                                   newManager,
                                                   responseTimeoutMicro)
-import           Network.Wai.Handler.Warp        (setHost, setPort)
+import           Network.URI                     (URI (..), URIAuth (..),
+                                                  parseURI)
+import qualified Network.Wai.Handler.Warp        as W (defaultSettings,
+                                                       runSettings, setHost,
+                                                       setPort)
+import           Network.Wai.Handler.WebSockets  (websocketsOr)
 import           Network.Wai.Middleware.Cors     (CorsResourcePolicy (..), cors,
                                                   simpleCorsResourcePolicy)
+import qualified Network.WebSockets              as WS (defaultConnectionOptions)
 import           Network.Wreq                    (Options, Response, manager)
 import           Web.Scotty                      (ScottyM, delete, get,
                                                   middleware, options, post,
-                                                  put, scottyOpts, settings)
+                                                  put, scottyApp)
 import           Yuntan.Gateway
 
 import qualified Data.Yaml                       as Y
@@ -91,17 +96,21 @@ program Options'{getConfigFile=configPath} = do
   case c of
     Left e     -> print e
     Right Config{..} -> do
-      let opts = def {settings = setPort port
-                               $ setHost (Host host) (settings def)}
-
+      -- let opts = def {settings = setPort port
+      --                          $ setHost (Host host) (settings def)}
       mgr <- newManager defaultManagerSettings
                 { managerConnCount = connPool
                 , managerResponseTimeout = responseTimeoutMicro $ connTimeout * 10000000
                 }
 
-      scottyOpts opts . application $ newProvider
-        { getAppByKey = getAppAndInitail mgr appList
-        }
+      let provider = newProvider
+            { getAppByKey = getAppAndInitail mgr appList
+            }
+
+      sapp <- scottyApp $ application provider
+      let app = websocketsOr WS.defaultConnectionOptions (wsProxyHandler provider) sapp
+      W.runSettings (W.setPort port . W.setHost (Host host) $ W.defaultSettings) app
+
 
 findApp :: [AppConfig] -> AppKey -> Maybe AppConfig
 findApp [] _ = Nothing
@@ -114,7 +123,10 @@ getAppAndInitail mgr configs k =
     Nothing -> return Nothing
     Just AppConfig{..} -> do
       let app = newApp key secret secure proxy
-          app' = app { doRequest = processRequest mgr baseUrl }
+          app' = app
+            { doRequest = processRequest mgr baseUrl
+            , prepareWsRequest = processWsRequest baseUrl
+            }
 
       return $ Just app'
 
@@ -127,6 +139,11 @@ processRequest mgr root req opts uri = do
 
   req opts' url
 
+
+processWsRequest :: String -> (String -> Int -> IO ()) -> IO ()
+processWsRequest baseUrl next = next (uriRegName auth) (read . drop 1 $ uriPort auth)
+  where Just uri = parseURI baseUrl
+        Just auth = uriAuthority uri
 
 application :: Provider -> ScottyM ()
 application provider = do

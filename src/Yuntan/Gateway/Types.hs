@@ -80,6 +80,7 @@ data App = App
   , maxRetry       :: Int
   -- set the max retry on bad gateway error
   , retryError     :: Maybe String
+  , prepareWsRequest :: (String -> Int -> IO ()) -> IO ()
   }
 
 
@@ -92,6 +93,7 @@ newApp appKey appSecret isSecure onlyProxy = App
   , onErrorRequest = pure ()
   , maxRetry = 3
   , retryError = Nothing
+  , prepareWsRequest = error "no implement"
   , ..
   }
 

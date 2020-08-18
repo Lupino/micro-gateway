@@ -13,17 +13,22 @@ module Yuntan.Gateway
   , proxyGETHandler
   , proxyDELETEHandler
   , optionsHandler
+  , wsProxyHandler
   ) where
 
+import           Control.Concurrent     (forkIO)
 import           Control.Exception      (try)
 import           Control.Lens           ((&), (.~), (^.))
-import           Control.Monad          (when)
+import           Control.Monad          (void, when)
 import           Control.Monad.IO.Class (liftIO)
 import           Crypto.Signature       (hmacSHA256, signJSON, signParams,
                                          signRaw)
 import           Data.Aeson             (Value (..), decode, object, toJSON,
                                          (.=))
-import qualified Data.ByteString.Char8  as B (ByteString, append, concat, pack)
+import qualified Data.ByteString.Char8  as B (ByteString, append,
+                                              breakSubstring, concat, drop,
+                                              dropWhile, null, pack, takeWhile,
+                                              unpack)
 import qualified Data.ByteString.Lazy   as LB (ByteString, empty, fromStrict,
                                                length, toStrict)
 import           Data.CaseInsensitive   (CI, mk, original)
@@ -41,6 +46,13 @@ import           Network.HTTP.Types     (ResponseHeaders, Status, status204,
                                          status502, status503, status504,
                                          statusCode)
 import           Network.Wai            (Request (rawPathInfo, rawQueryString, requestMethod))
+import qualified Network.WebSockets     as WS (Connection, Headers,
+                                               RequestHead (..), ServerApp,
+                                               acceptRequest,
+                                               defaultConnectionOptions,
+                                               pendingRequest, receive,
+                                               rejectRequest, runClientWith,
+                                               send)
 import qualified Network.Wreq           as Wreq
 import           System.Log.Logger      (errorM)
 import           Text.Read              (readMaybe)
@@ -292,28 +304,28 @@ headerOrParam hk pk = do
     Nothing  -> param pk `rescue` const (return "")
 
 requireApp :: Provider -> (App -> ActionM ()) -> ActionM ()
-requireApp Provider{..} proxy = do
-  key <- AppKey . LT.unpack <$> headerOrParam "X-REQUEST-KEY" "key"
-  if isValidKey key then doGetAppFromKey key
-                    else doGetAppFromPath
-  where doGetAppFromKey :: AppKey -> ActionM ()
-        doGetAppFromKey key = process key =<< liftIO (getAppByKey key)
-
-        doGetAppFromPath :: ActionM ()
+requireApp Provider{..} proxy = doGetAppByDomain
+  where doGetAppFromPath :: ActionM ()
         doGetAppFromPath = do
           key <- AppKey . takeKeyFromPath <$> param "pathname"
           if isValidKey key then do
             app <- liftIO $ getAppByKey key
             case app of
-              Nothing   -> errorNotFound key
+              Nothing   -> errorRequired
               Just app' -> proxy app' {isKeyOnPath=True}
-          else doGetAppByDomain
+          else errorRequired
 
         doGetAppByDomain :: ActionM ()
         doGetAppByDomain = do
           host <- Domain . LT.unpack . fromMaybe "" <$> header "Host"
           if isValidDomain host then process host =<< liftIO (getAppByDomain host)
-                                else errorRequired
+                                else doGetAppByHeaderOrParam
+
+        doGetAppByHeaderOrParam :: ActionM ()
+        doGetAppByHeaderOrParam = do
+          key <- AppKey . LT.unpack <$> headerOrParam "X-REQUEST-KEY" "key"
+          if isValidKey key then process key =<< liftIO (getAppByKey key)
+                            else doGetAppFromPath
 
         process :: Show a => a -> Maybe App -> ActionM ()
         process n Nothing    = errorNotFound n
@@ -330,3 +342,128 @@ matchAny = function $ \req ->
   Just [ ("rawuri",  b2t $ rawPathInfo req `B.append` rawQueryString req)
        , ("pathname", b2t $ rawPathInfo req)
        ]
+
+--------------------------------------------------------------------------------
+getFromHeader :: WS.Headers -> CI B.ByteString -> Maybe B.ByteString
+getFromHeader [] _ = Nothing
+getFromHeader ((x, y):xs) k | x == k = Just y
+                            | otherwise = getFromHeader xs k
+
+getParam :: B.ByteString -> B.ByteString -> Maybe B.ByteString
+getParam k = go . snd . B.breakSubstring k
+  where go :: B.ByteString -> Maybe B.ByteString
+        go "" = Nothing
+        go v  = go1 . B.drop 1 $ B.dropWhile (/='=') v
+
+        go1 :: B.ByteString -> Maybe B.ByteString
+        go1 "" = Nothing
+        go1 v  = Just v
+
+getFromHeaderOrParam :: WS.Headers -> B.ByteString -> CI B.ByteString -> B.ByteString -> B.ByteString
+getFromHeaderOrParam headers rawuri hk k =
+  fromMaybe (fromMaybe "" $ getParam k rawuri) $ getFromHeader headers hk
+
+wsProxyHandler :: Provider -> WS.ServerApp
+wsProxyHandler Provider{..} pendingConn =
+  withDomainOr
+    $ withKeyOr key
+    $ withKeyOr pkey
+    $ rejectRequest "KEY is required"
+  where requestHead = WS.pendingRequest pendingConn
+        rawuri = WS.requestPath requestHead
+        pathname = B.takeWhile (/='?') rawuri
+        headers = WS.requestHeaders requestHead
+        host = Domain . B.unpack . fromMaybe "" $ getFromHeader headers "Host"
+
+        key = AppKey
+          . B.unpack
+          $ getFromHeaderOrParam headers rawuri "X-REQUEST-KEY" "key"
+
+        pkey = AppKey . takeKeyFromPath $ B.unpack pathname
+
+        timestamp = getFromHeaderOrParam headers rawuri "X-REQUEST-TIME" "timestamp"
+        ts = fromMaybe (0::Int64) $ readMaybe $ B.unpack timestamp
+        tp = getFromHeaderOrParam headers rawuri "X-REQUEST-TYPE" "type"
+        nonce = getFromHeaderOrParam headers rawuri "X-REQUEST-NONCE" "nonce"
+        sign = getFromHeaderOrParam headers rawuri "X-REQUEST-SIGNATURE" "sign"
+        method = "WSPROXY"
+
+        rejectRequest :: B.ByteString -> IO ()
+        rejectRequest bs = WS.rejectRequest pendingConn $ "{\"err\": \"" <> bs <> "\"}"
+
+        fillKeyOnPath :: Show a => a -> App -> App
+        fillKeyOnPath n app = app {isKeyOnPath = show n == show pkey}
+
+        process :: Show a => a -> Maybe App -> IO ()
+        process n Nothing = rejectRequest $ "APP " <> B.pack (show n) <> " is not found."
+        process n (Just app@App{onlyProxy = True}) = runAction $ fillKeyOnPath n app
+        process n (Just app) =
+          case signSecretKey isOnPath (B.pack . show $ appSecret app) of
+            Left e -> WS.rejectRequest pendingConn $ "{\"err\": \"" <> B.pack e <> ".\"}"
+            Right secret -> do
+              now <- getEpochTime
+              if verifyTime now then
+                if verifySign (appKey app) secret
+                   then runAction app'
+                   else rejectRequest "Invalid REQUEST SIGNATURE"
+              else rejectRequest "SIGNATURE TIMEOUT"
+
+          where app' = fillKeyOnPath n app
+                isOnPath = isKeyOnPath app'
+
+        withDomainOr ::  IO () -> IO ()
+        withDomainOr tryNext = do
+          if isValidDomain host then process host =<< getAppByDomain host
+                                else tryNext
+
+        withKeyOr :: AppKey -> IO () -> IO ()
+        withKeyOr k tryNext = do
+          if isValidKey k then process k =<< liftIO (getAppByKey k)
+                          else tryNext
+
+        verifySign :: AppKey -> B.ByteString -> Bool
+        verifySign rkey secret = equalSign exceptSign
+          where exceptSign = signRaw secret
+                  [ ("key", B.pack $ show rkey)
+                  , ("timestamp", timestamp)
+                  , ("pathname", pathname)
+                  ]
+
+        equalSign :: CI B.ByteString -> Bool
+        equalSign except = except == mk sign
+
+        verifyTime :: Int64 -> Bool
+        verifyTime now = now - 300 < ts
+
+        signSecretKey :: Bool -> B.ByteString -> Either String B.ByteString
+        signSecretKey isOnPath secret =
+          case tp of
+            "JSAPI" ->
+              if B.null nonce
+                then
+                  Left "Invalid REQUEST NONCE"
+                else
+                  Right
+                    . original
+                    . hmacSHA256 nonce
+                    $ B.concat
+                      [ secret
+                      , method
+                      , dropKeyFromPath isOnPath (B.unpack pathname)
+                      , timestamp
+                      ]
+
+            _ -> Right secret
+
+
+        runAction :: App -> IO ()
+        runAction app = do
+          conn <- WS.acceptRequest pendingConn
+          prepareWsRequest app $ \h p -> do
+            WS.runClientWith h p rawuri' WS.defaultConnectionOptions headers $ \pconn -> do
+              void $ forkIO $ pipeWS conn pconn
+              pipeWS pconn conn
+            where rawuri' = dropKeyFromPath (isKeyOnPath app) (B.unpack rawuri)
+
+pipeWS :: WS.Connection -> WS.Connection -> IO ()
+pipeWS rConn sConn = WS.receive rConn >>= WS.send sConn
