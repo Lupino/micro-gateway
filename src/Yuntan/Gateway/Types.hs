@@ -69,6 +69,7 @@ data App = App
   , appSecret      :: AppSecret
   , isKeyOnPath    :: Bool
   , isSecure       :: Bool
+  , onlyProxy      :: Bool
   , doRequest      :: (Options -> String -> IO (Response LB.ByteString))
                    -> Options -> String -> IO (Response LB.ByteString)
   , beforeRequest  :: Maybe String -> Request -> IO (Either String ())
@@ -82,8 +83,8 @@ data App = App
   }
 
 
-newApp :: AppKey -> AppSecret -> Bool -> App
-newApp appKey appSecret isSecure = App
+newApp :: AppKey -> AppSecret -> Bool -> Bool -> App
+newApp appKey appSecret isSecure onlyProxy = App
   { isKeyOnPath = False
   , doRequest = error "no implement"
   , beforeRequest = \_ _ -> pure $ Right ()

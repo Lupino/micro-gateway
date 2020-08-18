@@ -168,11 +168,11 @@ getWreqOptions =
                       ]
 
 verifySignature' :: (App -> ActionM()) -> App -> ActionM ()
-verifySignature' proxy app@App{isSecure=secure} =
-  if secure then verifySignature proxy app
-            else proxy app
+verifySignature' proxy app@App{isSecure=True}  = verifySignature proxy app
+verifySignature' proxy app@App{isSecure=False} = proxy app
 
 verifySignature :: (App -> ActionM ()) -> App -> ActionM ()
+verifySignature proxy app@App{onlyProxy = True} = proxy app
 verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= do
   ct <- header "Content-Type"
   sec' <- signSecretKey . B.pack $ show sec

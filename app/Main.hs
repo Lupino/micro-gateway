@@ -45,6 +45,7 @@ data AppConfig = AppConfig
   , secret  :: AppSecret
   , baseUrl :: String
   , secure  :: Bool
+  , proxy   :: Bool -- flag of only proxy
   }
 
 data Config = Config
@@ -63,6 +64,7 @@ instance FromJSON AppConfig where
     secret  <- o .:  "secret"
     baseUrl <- o .:  "baseUrl"
     secure  <- o .:? "secure" .!= False
+    proxy   <- o .:? "proxy"  .!= False
     return AppConfig{..}
 
 instance FromJSON Config where
@@ -111,7 +113,7 @@ getAppAndInitail mgr configs k =
   case findApp configs k of
     Nothing -> return Nothing
     Just AppConfig{..} -> do
-      let app = newApp key secret secure
+      let app = newApp key secret secure proxy
           app' = app { doRequest = processRequest mgr baseUrl }
 
       return $ Just app'
