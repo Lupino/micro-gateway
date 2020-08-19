@@ -30,6 +30,7 @@ import           Crypto.Signature              (hmacSHA256, signJSON,
                                                 signParams, signRaw)
 import           Data.Aeson                    (Value (..), decode, object,
                                                 toJSON, (.=))
+import           Data.Bifunctor                (first)
 import           Data.Binary.Builder           (toLazyByteString)
 import qualified Data.ByteString.Char8         as B (ByteString, append,
                                                      breakSubstring, concat,
@@ -130,7 +131,7 @@ cookie2SetCookie Cookie {..}= defaultSetCookie
   { setCookieName = cookie_name
   , setCookieValue = cookie_value
   , setCookiePath = Just cookie_path
-  , setCookieExpires = Just $ cookie_expiry_time
+  , setCookieExpires = Just cookie_expiry_time
   -- , setCookieMaxAge =
   -- , setCookieDomain = Just cookie_domain
   , setCookieHttpOnly = cookie_http_only
@@ -353,7 +354,7 @@ cookieKey = do
   hv <- header "Cookie"
   case hv of
     Just hv' -> do
-      let cookies = map (\(k, v) -> (mk k, v)) $ parseCookies $ encodeUtf8 $ LT.toStrict hv'
+      let cookies = map (first mk) $ parseCookies $ encodeUtf8 $ LT.toStrict hv'
           ckey = LT.fromStrict . decodeUtf8 . fromMaybe "" $ getFromHeader cookies "key"
       return ckey
     Nothing -> return ""
@@ -455,7 +456,7 @@ wsProxyHandler Provider{..} pendingConn =
           . B.unpack
           $ getFromHeaderOrParam headers rawuri "X-REQUEST-KEY" "key"
 
-        cookies = map (\(k, v) -> (mk k, v)) $ parseCookies $ fromMaybe "" $ getFromHeader headers "Cookie"
+        cookies = map (first mk) $ parseCookies $ fromMaybe "" $ getFromHeader headers "Cookie"
         ckey = AppKey . B.unpack $ fromMaybe "" $ getFromHeader cookies "key"
 
         pkey = AppKey . takeKeyFromPath $ B.unpack pathname

@@ -148,21 +148,22 @@ application provider = do
 
   where policy = simpleCorsResourcePolicy
                    { corsMethods = [ "GET", "POST", "PUT", "DELETE", "OPTIONS" ]
-                   , corsRequestHeaders = [ "X-REQUEST-KEY"
-                                          , "X-REQUEST-SIGNATURE"
-                                          , "X-REQUEST-TIME"
-                                          , "X-REQUEST-TYPE"
-                                          , "X-REQUEST-NONCE"
-                                          , "Content-Type"
-                                          , "User-Agent"
-                                          , "X-Real-IP"
-                                          , "Host"
-                                          , "X-Forwarded-For"
-                                          , "X-URI"
-                                          , "X-Query-String"
-                                          , "X-Scheme"
-                                          , "Cookie"
-                                          , "Authorization"
-                                          ]
+                   , corsRequestHeaders =
+                     [ "X-REQUEST-KEY"
+                     , "X-REQUEST-SIGNATURE"
+                     , "X-REQUEST-TIME"
+                     , "X-REQUEST-TYPE"
+                     , "X-REQUEST-NONCE"
+                     , "Content-Type"
+                     , "User-Agent"
+                     , "X-Real-IP"
+                     , "Host"
+                     , "X-Forwarded-For"
+                     , "X-URI"
+                     , "X-Query-String"
+                     , "X-Scheme"
+                     , "Cookie"
+                     , "Authorization"
+                     ]
                    , corsMaxAge = Just 86400
                    }
