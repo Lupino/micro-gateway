@@ -30,10 +30,8 @@ library
                      , unix-time
                      , wai
                      , unordered-containers
-                     , wreq
                      , http-client
                      , case-insensitive
-                     , lens
                      , hslogger
                      , websockets
                      , stm
@@ -57,8 +55,6 @@ executable simple-gateway
                      , data-default-class
                      , streaming-commons
                      , warp
-                     , wreq
-                     , lens
                      , network-uri
                      , wai-websockets
                      , websockets

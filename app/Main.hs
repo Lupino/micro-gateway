@@ -2,23 +2,16 @@
 {-# LANGUAGE RecordWildCards   #-}
 
 module Main
-  (
-    main
+  ( main
   ) where
 
-import           Control.Lens                    ((&), (.~))
 import           Data.Aeson                      (FromJSON, parseJSON,
                                                   withObject, (.!=), (.:),
                                                   (.:?))
 import qualified Data.ByteString.Lazy            as LB (ByteString)
 import           Data.Maybe                      (fromMaybe)
 import           Data.Streaming.Network.Internal (HostPreference (Host))
-import           Network.HTTP.Client             (Manager,
-                                                  defaultManagerSettings,
-                                                  managerConnCount,
-                                                  managerResponseTimeout,
-                                                  newManager,
-                                                  responseTimeoutMicro)
+import qualified Network.HTTP.Client             as HTTP
 import           Network.URI                     (URI (..), URIAuth (..),
                                                   parseURI)
 import qualified Network.Wai.Handler.Warp        as W (defaultSettings,
@@ -28,7 +21,6 @@ import           Network.Wai.Handler.WebSockets  (websocketsOr)
 import           Network.Wai.Middleware.Cors     (CorsResourcePolicy (..), cors,
                                                   simpleCorsResourcePolicy)
 import qualified Network.WebSockets              as WS (defaultConnectionOptions)
-import           Network.Wreq                    (Options, Response, manager)
 import           Web.Scotty                      (ScottyM, delete, get,
                                                   middleware, options, post,
                                                   put, scottyApp)
@@ -99,11 +91,9 @@ program Options'{getConfigFile=configPath} = do
   case c of
     Left e     -> print e
     Right Config{..} -> do
-      -- let opts = def {settings = setPort port
-      --                          $ setHost (Host host) (settings def)}
-      mgr <- newManager defaultManagerSettings
-                { managerConnCount = connPool
-                , managerResponseTimeout = responseTimeoutMicro $ connTimeout * 10000000
+      mgr <- HTTP.newManager HTTP.defaultManagerSettings
+                { HTTP.managerConnCount = connPool
+                , HTTP.managerResponseTimeout = HTTP.responseTimeoutMicro $ connTimeout * 10000000
                 }
 
       let provider = newProvider
@@ -120,7 +110,7 @@ findApp [] _ = Nothing
 findApp (x:xs) k = if key x == k then Just x
                                  else findApp xs k
 
-getAppAndInitail :: Manager -> [AppConfig] -> AppKey -> IO (Maybe App)
+getAppAndInitail :: HTTP.Manager -> [AppConfig] -> AppKey -> IO (Maybe App)
 getAppAndInitail mgr configs k =
   case findApp configs k of
     Nothing -> return Nothing
@@ -133,14 +123,12 @@ getAppAndInitail mgr configs k =
 
       return $ Just app'
 
-processRequest :: Manager -> String
-               -> (Options -> String -> IO (Response LB.ByteString))
-               -> Options -> String -> IO (Response LB.ByteString)
-processRequest mgr root req opts uri = do
-  let opts' = opts & manager .~ Right mgr
-      url = root ++ uri
-
-  req opts' url
+processRequest :: HTTP.Manager -> String
+               -> (HTTP.Request -> HTTP.Manager -> IO (HTTP.Response LB.ByteString))
+               -> String -> IO (HTTP.Response LB.ByteString)
+processRequest mgr root req uri = do
+  r <- HTTP.parseRequest $ root ++ uri
+  req r mgr
 
 
 processWsRequest :: String -> (String -> Int -> IO ()) -> IO ()

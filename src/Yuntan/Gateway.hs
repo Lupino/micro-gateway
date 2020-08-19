@@ -23,7 +23,6 @@ import           Control.Concurrent.STM.TChan  (newTChanIO, readTChan,
 import           Control.Concurrent.STM.TVar   (newTVarIO, readTVar, readTVarIO,
                                                 writeTVar)
 import           Control.Exception             (SomeException, try)
-import           Control.Lens                  ((&), (.~), (^.))
 import           Control.Monad                 (forever, void, when)
 import           Control.Monad.IO.Class        (liftIO)
 import           Control.Monad.STM             (atomically)
@@ -51,7 +50,9 @@ import           Network.HTTP.Client           (Cookie (..), CookieJar,
                                                 HttpException (..),
                                                 HttpExceptionContent (..),
                                                 destroyCookieJar)
-import           Network.HTTP.Types            (ResponseHeaders, Status,
+import qualified Network.HTTP.Client           as HTTP
+import           Network.HTTP.Types            (Method, RequestHeaders,
+                                                ResponseHeaders, Status,
                                                 status204, status400, status404,
                                                 status500, status502, status503,
                                                 status504, statusCode)
@@ -69,7 +70,6 @@ import qualified Network.WebSockets            as WS (Headers, RequestHead (..),
                                                       runClientWith,
                                                       sendDataMessage)
 import           Network.WebSockets.Connection as WS (pingThread)
-import qualified Network.Wreq                  as Wreq
 import           System.Log.Logger             (errorM)
 import           Text.Read                     (readMaybe)
 import           Web.Scotty                    (ActionM, Param, RoutePattern,
@@ -94,20 +94,28 @@ errNotFound = err status404
 proxyPOSTHandler :: App -> ActionM ()
 proxyPOSTHandler app = do
   wb <- body
-  responseWreq app $ flip' Wreq.postWith wb
+  responseHTTP app $ prepareHTTPRequest "POST" (Just wb)
 
 proxyPUTHandler :: App -> ActionM ()
 proxyPUTHandler app = do
   wb <- body
-  responseWreq app $ flip' Wreq.putWith wb
+  responseHTTP app $ prepareHTTPRequest "PUT" (Just wb)
 
 proxyGETHandler :: App -> ActionM ()
-proxyGETHandler app = responseWreq app Wreq.getWith
+proxyGETHandler app = responseHTTP app (prepareHTTPRequest "GET" Nothing)
 
 proxyDELETEHandler :: App -> ActionM ()
 proxyDELETEHandler app = do
   wb <- body
-  responseWreq app $ flip' (Wreq.customPayloadMethodWith "DELETE") wb
+  responseHTTP app $ prepareHTTPRequest "DELETE" (Just wb)
+
+prepareHTTPRequest
+  :: Method -> Maybe LB.ByteString
+  -> HTTP.Request -> HTTP.Manager -> IO (HTTP.Response LB.ByteString)
+prepareHTTPRequest m Nothing req =
+  HTTP.httpLbs (req {HTTP.method=m})
+prepareHTTPRequest m (Just bs) req =
+  HTTP.httpLbs (req {HTTP.method=m, HTTP.requestBody = HTTP.RequestBodyLBS bs })
 
 mergeResponseHeaders :: [CI B.ByteString] -> ResponseHeaders -> ActionM ()
 mergeResponseHeaders _ [] = return ()
@@ -123,8 +131,11 @@ cookie2SetCookie Cookie {..}= defaultSetCookie
   , setCookieValue = cookie_value
   , setCookiePath = Just cookie_path
   , setCookieExpires = Just $ cookie_expiry_time
+  -- , setCookieMaxAge =
+  -- , setCookieDomain = Just cookie_domain
   , setCookieHttpOnly = cookie_http_only
   , setCookieSecure = cookie_secure_only
+  -- , setCookieSameSite =
   }
 
 mergeSetCookie :: CookieJar -> ActionM ()
@@ -133,25 +144,39 @@ mergeSetCookie cj = do
   where cookies = map (LT.fromStrict . decodeUtf8 . LB.toStrict . toLazyByteString . renderSetCookie . cookie2SetCookie) $ destroyCookieJar cj
 
 
-responseWreq :: App -> (Wreq.Options -> String -> IO (Wreq.Response LB.ByteString)) -> ActionM ()
-responseWreq app req = do
+
+responseHTTP :: App -> (HTTP.Request -> HTTP.Manager -> IO (HTTP.Response LB.ByteString)) -> ActionM ()
+responseHTTP app req = do
   ret <- liftIO . beforeRequest app (retryError app) =<< request
   case ret of
     Left e  -> err status500 e
-    Right _ -> responseWreq' app req
+    Right _ -> responseHTTP' app req
 
-responseWreq' :: App -> (Wreq.Options -> String -> IO (Wreq.Response LB.ByteString)) -> ActionM ()
-responseWreq' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
+responseHTTP' :: App -> (HTTP.Request -> HTTP.Manager -> IO (HTTP.Response LB.ByteString)) -> ActionM ()
+responseHTTP' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
   uri <- dropKeyFromPath isOnPath <$> param "rawuri"
-  opts <- getWreqOptions
-  e <- liftIO . try $ doRequest app req opts uri
+
+  rheaders <- mergeRequestHeaders
+    [ "Content-Type"
+    , "User-Agent"
+    , "X-REQUEST-KEY"
+    , "X-Real-IP"
+    , "Host"
+    , "X-Forwarded-For"
+    , "X-URI"
+    , "X-Query-String"
+    , "X-Scheme"
+    , "Cookie"
+    ]
+
+  e <- liftIO . try $ doRequest app (prepareReq rheaders req) uri
   case e of
     Left (HttpExceptionRequest _ content) ->
       case content of
         (StatusCodeException r dat) -> do
-          let hdrs = r ^. Wreq.responseHeaders
-              st   = r ^. Wreq.responseStatus
-              cookie = r ^. Wreq.responseCookieJar
+          let hdrs = HTTP.responseHeaders r
+              st   = HTTP.responseStatus r
+              cookie = HTTP.responseCookieJar r
 
           output hdrs st cookie $ LB.fromStrict dat
           when (st == status502 || st == status504 || st == status503)
@@ -167,7 +192,7 @@ responseWreq' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
             status status502
             raw LB.empty
           else do
-            responseWreq (app
+            responseHTTP (app
               { maxRetry = maxRetry app - 1
               , retryError = Just (show other)
               }) req
@@ -176,10 +201,10 @@ responseWreq' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
       status status500
       raw LB.empty
     Right r  -> do
-      let hdrs = r ^. Wreq.responseHeaders
-          st   = r ^. Wreq.responseStatus
-          dat  = r ^. Wreq.responseBody
-          cookie = r ^. Wreq.responseCookieJar
+      let hdrs = HTTP.responseHeaders r
+          st   = HTTP.responseStatus r
+          dat  = HTTP.responseBody r
+          cookie = HTTP.responseCookieJar r
 
       output hdrs st cookie dat
 
@@ -193,28 +218,17 @@ responseWreq' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
           raw dat
           liftIO . afterRequest app len $ statusCode st
 
-mergeRequestHeaders :: [CI B.ByteString] -> ActionM Wreq.Options
-mergeRequestHeaders [] = return Wreq.defaults
+        prepareReq h f req' mgr = f (req' {HTTP.requestHeaders = h, HTTP.redirectCount = 0}) mgr
+
+mergeRequestHeaders :: [CI B.ByteString] -> ActionM RequestHeaders
+mergeRequestHeaders [] = return []
 mergeRequestHeaders (x:xs) = do
   hdr <- header (b2t $ original x)
   hdrs <- mergeRequestHeaders xs
   case hdr of
-    Just hd -> return $ hdrs & Wreq.header x .~ [t2b hd]
+    Just hd -> return ((x, encodeUtf8 $ LT.toStrict hd):hdrs)
     Nothing -> return hdrs
 
-getWreqOptions :: ActionM Wreq.Options
-getWreqOptions =
-  mergeRequestHeaders [ "Content-Type"
-                      , "User-Agent"
-                      , "X-REQUEST-KEY"
-                      , "X-Real-IP"
-                      , "Host"
-                      , "X-Forwarded-For"
-                      , "X-URI"
-                      , "X-Query-String"
-                      , "X-Scheme"
-                      , "Cookie"
-                      ]
 
 verifySignature' :: (App -> ActionM()) -> App -> ActionM ()
 verifySignature' proxy app@App{isSecure=True}  = verifySignature proxy app
@@ -340,7 +354,6 @@ cookieKey = do
     Just hv' -> do
       let cookies = map (\(k, v) -> (mk k, v)) $ parseCookies $ encodeUtf8 $ LT.toStrict hv'
           ckey = LT.fromStrict . decodeUtf8 . fromMaybe "" $ getFromHeader cookies "key"
-      liftIO $ print cookies
       return ckey
     Nothing -> return ""
 
@@ -547,7 +560,6 @@ wsProxyHandler Provider{..} pendingConn =
 
           thread3 <- forkIO $ forever $ do
             bs0 <- try $ WS.receiveDataMessage conn
-            print bs0
             case bs0 of
               Left (_ :: SomeException) -> killThreads
               Right bs1 -> atomically $ writeTChan readChan bs1

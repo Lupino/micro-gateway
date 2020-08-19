@@ -18,8 +18,8 @@ import qualified Data.ByteString.Lazy as LB (ByteString)
 import           Data.Int             (Int64)
 import           Data.String          (IsString (..))
 import qualified Data.Text            as T (unpack)
+import qualified Network.HTTP.Client  as HTTP
 import           Network.Wai          (Request (..))
-import           Network.Wreq         (Options, Response)
 
 newtype AppKey    = AppKey String
   deriving (Eq)
@@ -70,8 +70,8 @@ data App = App
   , isKeyOnPath    :: Bool
   , isSecure       :: Bool
   , onlyProxy      :: Bool
-  , doRequest      :: (Options -> String -> IO (Response LB.ByteString))
-                   -> Options -> String -> IO (Response LB.ByteString)
+  , doRequest      :: (HTTP.Request -> HTTP.Manager -> IO (HTTP.Response LB.ByteString))
+                   -> String -> IO (HTTP.Response LB.ByteString)
   , beforeRequest  :: Maybe String -> Request -> IO (Either String ())
   -- beforeRequest retryError req
   , afterRequest   :: Int64 -> Int -> IO ()
