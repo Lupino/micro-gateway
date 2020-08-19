@@ -38,6 +38,7 @@ library
                      , websockets
                      , stm
                      , cookie
+                     , binary
   default-language:    Haskell2010
 
 executable simple-gateway

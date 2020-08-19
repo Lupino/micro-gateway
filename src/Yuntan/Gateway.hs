@@ -31,6 +31,7 @@ import           Crypto.Signature              (hmacSHA256, signJSON,
                                                 signParams, signRaw)
 import           Data.Aeson                    (Value (..), decode, object,
                                                 toJSON, (.=))
+import           Data.Binary.Builder           (toLazyByteString)
 import qualified Data.ByteString.Char8         as B (ByteString, append,
                                                      breakSubstring, concat,
                                                      drop, dropWhile, null,
@@ -43,16 +44,21 @@ import           Data.HashMap.Strict           (delete, insert, lookupDefault)
 import           Data.Int                      (Int64)
 import           Data.Maybe                    (fromMaybe)
 import           Data.Text                     as T (Text, unpack)
-import           Data.Text.Encoding            (encodeUtf8)
-import qualified Data.Text.Lazy                as LT (Text, null, pack,
-                                                      toStrict, unpack)
-import           Network.HTTP.Client           (HttpException (..),
-                                                HttpExceptionContent (..))
+import           Data.Text.Encoding            (decodeUtf8, encodeUtf8)
+import qualified Data.Text.Lazy                as LT (Text, fromStrict, null,
+                                                      pack, toStrict, unpack)
+import           Network.HTTP.Client           (Cookie (..), CookieJar,
+                                                HttpException (..),
+                                                HttpExceptionContent (..),
+                                                destroyCookieJar)
 import           Network.HTTP.Types            (ResponseHeaders, Status,
                                                 status204, status400, status404,
                                                 status500, status502, status503,
                                                 status504, statusCode)
 import           Network.Wai                   (Request (rawPathInfo, rawQueryString, requestMethod))
+import           Web.Cookie                    (SetCookie (..),
+                                                defaultSetCookie, parseCookies,
+                                                renderSetCookie)
 
 import qualified Network.WebSockets            as WS (Headers, RequestHead (..),
                                                       ServerApp, acceptRequest,
@@ -67,9 +73,10 @@ import qualified Network.Wreq                  as Wreq
 import           System.Log.Logger             (errorM)
 import           Text.Read                     (readMaybe)
 import           Web.Scotty                    (ActionM, Param, RoutePattern,
-                                                body, function, header, json,
-                                                param, params, raw, request,
-                                                rescue, setHeader, status)
+                                                addHeader, body, function,
+                                                header, json, param, params,
+                                                raw, request, rescue, setHeader,
+                                                status)
 import           Yuntan.Gateway.Types
 import           Yuntan.Gateway.Utils
 
@@ -110,6 +117,22 @@ mergeResponseHeaders k ((n, v):xs) =
                 mergeResponseHeaders k xs
                 else mergeResponseHeaders k xs
 
+cookie2SetCookie :: Cookie -> SetCookie
+cookie2SetCookie Cookie {..}= defaultSetCookie
+  { setCookieName = cookie_name
+  , setCookieValue = cookie_value
+  , setCookiePath = Just cookie_path
+  , setCookieExpires = Just $ cookie_expiry_time
+  , setCookieHttpOnly = cookie_http_only
+  , setCookieSecure = cookie_secure_only
+  }
+
+mergeSetCookie :: CookieJar -> ActionM ()
+mergeSetCookie cj = do
+  mapM_ (addHeader "Set-Cookie") cookies
+  where cookies = map (LT.fromStrict . decodeUtf8 . LB.toStrict . toLazyByteString . renderSetCookie . cookie2SetCookie) $ destroyCookieJar cj
+
+
 responseWreq :: App -> (Wreq.Options -> String -> IO (Wreq.Response LB.ByteString)) -> ActionM ()
 responseWreq app req = do
   ret <- liftIO . beforeRequest app (retryError app) =<< request
@@ -128,8 +151,9 @@ responseWreq' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
         (StatusCodeException r dat) -> do
           let hdrs = r ^. Wreq.responseHeaders
               st   = r ^. Wreq.responseStatus
+              cookie = r ^. Wreq.responseCookieJar
 
-          output hdrs st $ LB.fromStrict dat
+          output hdrs st cookie $ LB.fromStrict dat
           when (st == status502 || st == status504 || st == status503)
             $ liftIO onError
         ResponseTimeout -> do
@@ -155,15 +179,17 @@ responseWreq' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
       let hdrs = r ^. Wreq.responseHeaders
           st   = r ^. Wreq.responseStatus
           dat  = r ^. Wreq.responseBody
+          cookie = r ^. Wreq.responseCookieJar
 
-      output hdrs st dat
+      output hdrs st cookie dat
 
-  where output hdrs st dat = do
+  where output hdrs st cookie dat = do
           let len  = LB.length dat
 
           status st
           setHeader "Content-Length" . LT.pack . show $ len
-          mergeResponseHeaders ["Content-Type"] hdrs
+          mergeResponseHeaders ["Content-Type", "Location", "Date"] hdrs
+          mergeSetCookie cookie
           raw dat
           liftIO . afterRequest app len $ statusCode st
 
@@ -187,6 +213,7 @@ getWreqOptions =
                       , "X-URI"
                       , "X-Query-String"
                       , "X-Scheme"
+                      , "Cookie"
                       ]
 
 verifySignature' :: (App -> ActionM()) -> App -> ActionM ()
@@ -306,6 +333,17 @@ verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= 
 optionsHandler :: ActionM ()
 optionsHandler = status status204 >> raw LB.empty
 
+cookieKey :: ActionM LT.Text
+cookieKey = do
+  hv <- header "Cookie"
+  case hv of
+    Just hv' -> do
+      let cookies = map (\(k, v) -> (mk k, v)) $ parseCookies $ encodeUtf8 $ LT.toStrict hv'
+          ckey = LT.fromStrict . decodeUtf8 . fromMaybe "" $ getFromHeader cookies "key"
+      liftIO $ print cookies
+      return ckey
+    Nothing -> return ""
+
 headerOrParam :: LT.Text -> LT.Text -> ActionM LT.Text
 headerOrParam hk pk = do
   hv <- header hk
@@ -335,7 +373,11 @@ requireApp Provider{..} proxy = doGetAppByDomain
 
         doGetAppByHeaderOrParam :: ActionM ()
         doGetAppByHeaderOrParam = do
-          key <- AppKey . LT.unpack <$> headerOrParam "X-REQUEST-KEY" "key"
+          hkey <- headerOrParam "X-REQUEST-KEY" "key"
+          ckey <- cookieKey
+
+          let key = AppKey . LT.unpack $ if LT.null hkey then ckey else hkey
+
           valid <- liftIO $ isValidKey key
           if valid then process key =<< liftIO (getAppByKey key)
                    else doGetAppFromPath
@@ -386,6 +428,7 @@ wsProxyHandler :: Provider -> WS.ServerApp
 wsProxyHandler Provider{..} pendingConn =
   withDomainOr
     $ withKeyOr key
+    $ withKeyOr ckey
     $ withKeyOr pkey
     $ rejectRequest "KEY is required"
   where requestHead = WS.pendingRequest pendingConn
@@ -397,6 +440,9 @@ wsProxyHandler Provider{..} pendingConn =
         key = AppKey
           . B.unpack
           $ getFromHeaderOrParam headers rawuri "X-REQUEST-KEY" "key"
+
+        cookies = map (\(k, v) -> (mk k, v)) $ parseCookies $ fromMaybe "" $ getFromHeader headers "Cookie"
+        ckey = AppKey . B.unpack $ fromMaybe "" $ getFromHeader cookies "key"
 
         pkey = AppKey . takeKeyFromPath $ B.unpack pathname
 
