@@ -167,6 +167,7 @@ responseHTTP' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
     , "X-Query-String"
     , "X-Scheme"
     , "Cookie"
+    , "Authorization"
     ]
 
   e <- liftIO . try $ doRequest app (prepareReq rheaders req) uri
