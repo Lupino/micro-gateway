@@ -242,8 +242,18 @@ mergeRequestHeaders (x:xs) = do
 
 
 verifySignature' :: (App -> ActionM()) -> App -> ActionM ()
-verifySignature' proxy app@App{isSecure=True}  = verifySignature proxy app
 verifySignature' proxy app@App{isSecure=False} = proxy app
+verifySignature' proxy app@App{isSecure=True,isKeyOnPath=isOnPath}  = do
+  sp <- dropKeyFromPath isOnPath <$> param "pathname"
+  if isAllowPages (allowPages app) sp
+    then proxy app else verifySignature proxy app
+
+  where isAllowPages :: [String] -> String -> Bool
+        isAllowPages [] _ = False
+        isAllowPages (x:xs) p
+          | x == p = True
+          | x == take (length x) p = True
+          | otherwise = isAllowPages xs p
 
 verifySignature :: (App -> ActionM ()) -> App -> ActionM ()
 verifySignature proxy app@App{onlyProxy = True} = proxy app

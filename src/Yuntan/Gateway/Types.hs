@@ -82,8 +82,12 @@ data App = App
   -- set the max retry on bad gateway error
   , retryError     :: Maybe String
   , prepareWsRequest :: (String -> Int -> IO ()) -> IO ()
+  --
   , replaceKeyPages :: [String]
   , replaceKeyName :: ByteString
+
+  -- allow page prefix
+  , allowPages :: [String]
   }
 
 
@@ -99,6 +103,7 @@ newApp appKey appSecret isSecure onlyProxy = App
   , prepareWsRequest = error "no implement"
   , replaceKeyPages = []
   , replaceKeyName = "__KEY__"
+  , allowPages = []
   , ..
   }
 
