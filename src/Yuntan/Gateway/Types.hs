@@ -14,6 +14,7 @@ module Yuntan.Gateway.Types
   ) where
 
 import           Data.Aeson           (FromJSON (..), ToJSON (..), withText)
+import           Data.ByteString      (ByteString)
 import qualified Data.ByteString.Lazy as LB (ByteString)
 import           Data.Int             (Int64)
 import           Data.String          (IsString (..))
@@ -81,6 +82,8 @@ data App = App
   -- set the max retry on bad gateway error
   , retryError     :: Maybe String
   , prepareWsRequest :: (String -> Int -> IO ()) -> IO ()
+  , replaceKeyPages :: [String]
+  , replaceKeyName :: ByteString
   }
 
 
@@ -94,6 +97,8 @@ newApp appKey appSecret isSecure onlyProxy = App
   , maxRetry = 3
   , retryError = Nothing
   , prepareWsRequest = error "no implement"
+  , replaceKeyPages = []
+  , replaceKeyName = "__KEY__"
   , ..
   }
 

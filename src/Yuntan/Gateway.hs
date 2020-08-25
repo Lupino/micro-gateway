@@ -39,6 +39,7 @@ import qualified Data.ByteString.Char8         as B (ByteString, append,
 import qualified Data.ByteString.Lazy          as LB (ByteString, empty,
                                                       fromStrict, length,
                                                       toStrict)
+import           Data.ByteString.Lazy.Search   (replace)
 import           Data.CaseInsensitive          (CI, mk, original)
 import           Data.HashMap.Strict           (delete, insert, lookupDefault)
 import           Data.Int                      (Int64)
@@ -58,10 +59,6 @@ import           Network.HTTP.Types            (Method, RequestHeaders,
                                                 status500, status502, status503,
                                                 status504, statusCode)
 import           Network.Wai                   (Request (rawPathInfo, rawQueryString, requestMethod))
-import           Web.Cookie                    (SetCookie (..),
-                                                defaultSetCookie, parseCookies,
-                                                renderSetCookie)
-
 import qualified Network.WebSockets            as WS (Headers, RequestHead (..),
                                                       ServerApp, acceptRequest,
                                                       defaultConnectionOptions,
@@ -73,6 +70,9 @@ import qualified Network.WebSockets            as WS (Headers, RequestHead (..),
 import           Network.WebSockets.Connection as WS (pingThread)
 import           System.Log.Logger             (errorM)
 import           Text.Read                     (readMaybe)
+import           Web.Cookie                    (SetCookie (..),
+                                                defaultSetCookie, parseCookies,
+                                                renderSetCookie)
 import           Web.Scotty                    (ActionM, Param, RoutePattern,
                                                 addHeader, body, function,
                                                 header, json, param, params,
@@ -217,10 +217,19 @@ responseHTTP' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
           setHeader "Content-Length" . LT.pack . show $ len
           mergeResponseHeaders ["Content-Type", "Location", "Date"] hdrs
           mergeSetCookie cookie
-          raw dat
+
+          pathname <- dropKeyFromPath isOnPath <$> param "pathname"
+
+          if pathname `elem` replaceKeyPages app
+             then raw $ replace rkName key dat
+             else raw dat
+
           liftIO . afterRequest app len $ statusCode st
 
         prepareReq h f req' mgr = f (req' {HTTP.requestHeaders = h, HTTP.redirectCount = 0}) mgr
+
+        rkName = replaceKeyName app
+        key = B.pack . show $ appKey app
 
 mergeRequestHeaders :: [CI B.ByteString] -> ActionM RequestHeaders
 mergeRequestHeaders [] = return []
