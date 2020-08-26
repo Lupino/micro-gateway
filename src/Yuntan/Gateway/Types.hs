@@ -17,15 +17,15 @@ import           Data.ByteString      (ByteString)
 import qualified Data.ByteString.Lazy as LB (ByteString)
 import           Data.Int             (Int64)
 import           Data.String          (IsString (..))
-import qualified Data.Text.Lazy       as LT (Text, fromStrict, null)
+import qualified Data.Text.Lazy       as LT (Text, fromStrict, null, unpack)
 import qualified Network.HTTP.Client  as HTTP
 import           Network.Wai          (Request (..))
 
-newtype AppKey = AppKey LT.Text
+newtype AppKey = AppKey {unAppKey :: LT.Text}
   deriving (Eq)
 
 instance Show AppKey where
-  show (AppKey k) = show k
+  show = LT.unpack . unAppKey
 
 instance IsString AppKey where
   fromString = AppKey . fromString
@@ -36,10 +36,10 @@ instance FromJSON AppKey where
 instance ToJSON AppKey where
   toJSON (AppKey k) = toJSON k
 
-newtype AppSecret = AppSecret LT.Text
+newtype AppSecret = AppSecret {unAppSecret :: LT.Text}
 
 instance Show AppSecret where
-  show (AppSecret s) = show s
+  show = LT.unpack . unAppSecret
 
 instance IsString AppSecret where
   fromString = AppSecret . fromString
@@ -50,10 +50,10 @@ instance FromJSON AppSecret where
 instance ToJSON AppSecret where
   toJSON (AppSecret s) = toJSON s
 
-newtype Domain    = Domain LT.Text
+newtype Domain = Domain {unDomain :: LT.Text}
 
 instance Show Domain where
-  show (Domain d) = show d
+  show = LT.unpack . unDomain
 
 instance IsString Domain where
   fromString = Domain . fromString

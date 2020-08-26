@@ -235,7 +235,7 @@ responseHTTP' app@App{onErrorRequest=onError} req = do
         prepareReq h f req' mgr = f (req' {HTTP.requestHeaders = h, HTTP.redirectCount = 0}) mgr
 
         rkName = replaceKeyName app
-        key = B.pack . show $ appKey app
+        key = t2b . unAppKey $ appKey app
 
         replaceData pathname dat =
           if pathname `elem` replaceKeyPages app
@@ -278,7 +278,7 @@ verifySignature :: (App -> ActionM ()) -> App -> ActionM ()
 verifySignature proxy app@App{onlyProxy = True} = proxy app
 verifySignature proxy app@App{appSecret=sec, appKey=key}= do
   ct <- header "Content-Type"
-  sec' <- signSecretKey . B.pack $ show sec
+  sec' <- signSecretKey . t2b $ unAppSecret sec
   case sec' of
     Left e -> errBadRequest e
     Right secret ->
@@ -321,7 +321,7 @@ verifySignature proxy app@App{appSecret=sec, appKey=key}= do
           timestamp <- headerOrParam "X-REQUEST-TIME" "timestamp"
           sp <- getPathName app
           wb <- body
-          let exceptSign = signRaw secret [ ("key", B.pack $ show key)
+          let exceptSign = signRaw secret [ ("key", t2b $ unAppKey key)
                                           , ("timestamp", t2b timestamp)
                                           , ("raw", LB.toStrict wb)
                                           , ("pathname", t2b sp)
@@ -335,7 +335,7 @@ verifySignature proxy app@App{appSecret=sec, appKey=key}= do
           timestamp <- headerOrParam "X-REQUEST-TIME" "timestamp"
           vv <- params
           sp <- getPathName app
-          let exceptSign = signParams secret $ set "key" (LT.pack $ show key)
+          let exceptSign = signParams secret $ set "key" (unAppKey key)
                                              $ set "timestamp" timestamp
                                              $ set "pathname" sp
                                              $ remove "sign"
@@ -499,7 +499,7 @@ wsProxyHandler Provider{..} pendingConn =
         process n Nothing = rejectRequest $ "APP " <> B.pack (show n) <> " is not found."
         process n (Just app@App{onlyProxy = True}) = runAction $ fillKeyOnPath n app
         process n (Just app) =
-          case signSecretKey isOnPath (B.pack . show $ appSecret app) of
+          case signSecretKey isOnPath (t2b . unAppSecret $ appSecret app) of
             Left e -> WS.rejectRequest pendingConn $ "{\"err\": \"" <> B.pack e <> ".\"}"
             Right secret -> do
               now <- getEpochTime
@@ -527,7 +527,7 @@ wsProxyHandler Provider{..} pendingConn =
         verifySign :: AppKey -> B.ByteString -> Bool
         verifySign rkey secret = equalSign exceptSign
           where exceptSign = signRaw secret
-                  [ ("key", B.pack $ show rkey)
+                  [ ("key", t2b $ unAppKey rkey)
                   , ("timestamp", timestamp)
                   , ("pathname", t2b pathname)
                   ]
