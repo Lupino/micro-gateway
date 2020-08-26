@@ -30,7 +30,6 @@ import           Crypto.Signature              (hmacSHA256, signJSON,
                                                 signParams, signRaw)
 import           Data.Aeson                    (Value (..), decode, object,
                                                 toJSON, (.=))
-import           Data.Bifunctor                (first)
 import           Data.Binary.Builder           (toLazyByteString)
 import qualified Data.ByteString.Char8         as B (ByteString, append,
                                                      breakSubstring, concat,
@@ -73,7 +72,7 @@ import           Network.WebSockets.Connection as WS (pingThread)
 import           System.Log.Logger             (errorM)
 import           Text.Read                     (readMaybe)
 import           Web.Cookie                    (SetCookie (..),
-                                                defaultSetCookie, parseCookies,
+                                                defaultSetCookie,
                                                 renderSetCookie)
 import           Web.Scotty                    (ActionM, Param, RoutePattern,
                                                 addHeader, body, function,
@@ -388,16 +387,6 @@ verifySignature proxy app@App{appSecret=sec, appKey=key}= do
 optionsHandler :: ActionM ()
 optionsHandler = status status204 >> raw LB.empty
 
-cookieKey :: ActionM LT.Text
-cookieKey = do
-  hv <- header "Cookie"
-  case hv of
-    Just hv' -> do
-      let cookies = map (first mk) $ parseCookies $ encodeUtf8 $ LT.toStrict hv'
-          ckey = LT.fromStrict . decodeUtf8 . fromMaybe "" $ getFromHeader cookies "key"
-      return ckey
-    Nothing -> return ""
-
 headerOrParam :: LT.Text -> LT.Text -> ActionM LT.Text
 headerOrParam hk pk = do
   hv <- header hk
@@ -427,10 +416,7 @@ requireApp Provider{..} proxy = doGetAppByDomain
 
         doGetAppByHeaderOrParam :: ActionM ()
         doGetAppByHeaderOrParam = do
-          hkey <- headerOrParam "X-REQUEST-KEY" "key"
-          ckey <- cookieKey
-
-          let key = AppKey . LT.unpack $ if LT.null hkey then ckey else hkey
+          key <- AppKey . LT.unpack <$> headerOrParam "X-REQUEST-KEY" "key"
 
           valid <- liftIO $ isValidKey key
           if valid then process key =<< liftIO (getAppByKey key)
@@ -482,7 +468,6 @@ wsProxyHandler :: Provider -> WS.ServerApp
 wsProxyHandler Provider{..} pendingConn =
   withDomainOr
     $ withKeyOr key
-    $ withKeyOr ckey
     $ withKeyOr pkey
     $ rejectRequest "KEY is required"
   where requestHead = WS.pendingRequest pendingConn
@@ -494,9 +479,6 @@ wsProxyHandler Provider{..} pendingConn =
         key = AppKey
           . B.unpack
           $ getFromHeaderOrParam headers rawuri "X-REQUEST-KEY" "key"
-
-        cookies = map (first mk) $ parseCookies $ fromMaybe "" $ getFromHeader headers "Cookie"
-        ckey = AppKey . B.unpack $ fromMaybe "" $ getFromHeader cookies "key"
 
         pkey = AppKey $ takeKeyFromPath pathname
 
