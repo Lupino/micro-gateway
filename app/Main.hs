@@ -8,9 +8,12 @@ module Main
 import           Data.Aeson                      (FromJSON, parseJSON,
                                                   withObject, (.!=), (.:),
                                                   (.:?))
+import           Data.ByteString                 (ByteString)
 import qualified Data.ByteString.Lazy            as LB (ByteString)
 import           Data.Maybe                      (fromMaybe)
 import           Data.Streaming.Network.Internal (HostPreference (Host))
+import           Data.Text.Encoding              (encodeUtf8)
+import qualified Data.Yaml                       as Y
 import qualified Network.HTTP.Client             as HTTP
 import           Network.URI                     (URI (..), URIAuth (..),
                                                   parseURI)
@@ -21,13 +24,19 @@ import           Network.Wai.Handler.WebSockets  (websocketsOr)
 import           Network.Wai.Middleware.Cors     (CorsResourcePolicy (..), cors,
                                                   simpleCorsResourcePolicy)
 import qualified Network.WebSockets              as WS (defaultConnectionOptions)
+import           Options.Applicative
 import           Web.Scotty                      (ScottyM, delete, get,
                                                   middleware, options, post,
                                                   put, scottyApp)
-import           Yuntan.Gateway
-
-import qualified Data.Yaml                       as Y
-import           Options.Applicative
+import           Yuntan.Gateway                  (matchAny, optionsHandler,
+                                                  proxyDELETEHandler,
+                                                  proxyGETHandler,
+                                                  proxyPOSTHandler,
+                                                  proxyPUTHandler, requireApp,
+                                                  verifySignature,
+                                                  verifySignature',
+                                                  wsProxyHandler)
+import qualified Yuntan.Gateway                  as GW
 
 newtype Options' = Options' {getConfigFile :: String}
 
@@ -39,12 +48,17 @@ parser = Options' <$> strOption (long "config"
                                 <> value "config.yaml")
 
 data AppConfig = AppConfig
-  { key     :: AppKey
-  , secret  :: AppSecret
-  , baseUrl :: String
-  , secure  :: Bool
-  , proxy   :: Bool -- flag of only proxy
-  , wsUrl   :: Maybe String
+  { key          :: GW.AppKey
+  , secret       :: GW.AppSecret
+  , baseUrl      :: String
+  , secure       :: Bool
+  , proxy        :: Bool -- flag of only proxy
+  , wsUrl        :: Maybe String
+  , replacePages :: [String]
+  , replaceName  :: ByteString
+
+  -- allow page prefix
+  , allowPages   :: [String]
   }
 
 data Config = Config
@@ -59,13 +73,19 @@ data Config = Config
 
 instance FromJSON AppConfig where
   parseJSON = withObject "AppConfig" $ \o -> do
-    key     <- o .:  "key"
-    secret  <- o .:  "secret"
-    baseUrl <- o .:  "baseUrl"
-    secure  <- o .:? "secure" .!= False
-    proxy   <- o .:? "proxy"  .!= False
-    wsUrl   <- o .:? "wsUrl"
-    return AppConfig{..}
+    key          <- o .:  "key"
+    secret       <- o .:  "secret"
+    baseUrl      <- o .:  "baseUrl"
+    secure       <- o .:? "secure"       .!= False
+    proxy        <- o .:? "proxy"        .!= False
+    wsUrl        <- o .:? "wsUrl"
+    allowPages   <- o .:? "allowPages"   .!= []
+    replacePages <- o .:? "replacePages" .!= []
+    rname        <- o .:? "replaceName"  .!= "__KEY__"
+    return AppConfig
+      { replaceName = encodeUtf8 rname
+      , ..
+      }
 
 instance FromJSON Config where
   parseJSON = withObject "Config" $ \o -> do
@@ -96,8 +116,8 @@ program Options'{getConfigFile=configPath} = do
                 , HTTP.managerResponseTimeout = HTTP.responseTimeoutMicro $ connTimeout * 10000000
                 }
 
-      let provider = newProvider
-            { getAppByKey = getAppAndInitail mgr appList
+      let provider = GW.newProvider
+            { GW.getAppByKey = getAppAndInitail mgr appList
             }
 
       sapp <- scottyApp $ application provider
@@ -105,20 +125,23 @@ program Options'{getConfigFile=configPath} = do
       W.runSettings (W.setPort port . W.setHost (Host host) $ W.defaultSettings) app
 
 
-findApp :: [AppConfig] -> AppKey -> Maybe AppConfig
+findApp :: [AppConfig] -> GW.AppKey -> Maybe AppConfig
 findApp [] _ = Nothing
 findApp (x:xs) k = if key x == k then Just x
                                  else findApp xs k
 
-getAppAndInitail :: HTTP.Manager -> [AppConfig] -> AppKey -> IO (Maybe App)
+getAppAndInitail :: HTTP.Manager -> [AppConfig] -> GW.AppKey -> IO (Maybe GW.App)
 getAppAndInitail mgr configs k =
   case findApp configs k of
     Nothing -> return Nothing
     Just AppConfig{..} -> do
-      let app = newApp key secret secure proxy
+      let app = GW.newApp key secret secure proxy
           app' = app
-            { doRequest = processRequest mgr baseUrl
-            , prepareWsRequest = processWsRequest $ fromMaybe baseUrl wsUrl
+            { GW.doRequest        = processRequest mgr baseUrl
+            , GW.prepareWsRequest = processWsRequest $ fromMaybe baseUrl wsUrl
+            , GW.allowPages       = allowPages
+            , GW.replaceKeyName   = replaceName
+            , GW.replaceKeyPages  = replacePages
             }
 
       return $ Just app'
@@ -136,7 +159,7 @@ processWsRequest baseUrl next = next (uriRegName auth) (read . drop 1 $ uriPort 
   where Just uri = parseURI baseUrl
         Just auth = uriAuthority uri
 
-application :: Provider -> ScottyM ()
+application :: GW.Provider -> ScottyM ()
 application provider = do
   middleware $ cors (const $ Just policy)
 
