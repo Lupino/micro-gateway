@@ -448,7 +448,7 @@ getParam :: B.ByteString -> B.ByteString -> Maybe B.ByteString
 getParam k = go . snd . B.breakSubstring k
   where go :: B.ByteString -> Maybe B.ByteString
         go "" = Nothing
-        go v  = go1 . B.drop 1 $ B.dropWhile (/='=') v
+        go v  = go1 . B.drop 1 $ B.takeWhile (/='&') $ B.dropWhile (/='=') v
 
         go1 :: B.ByteString -> Maybe B.ByteString
         go1 "" = Nothing
