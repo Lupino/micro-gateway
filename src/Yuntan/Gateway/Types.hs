@@ -2,8 +2,7 @@
 {-# LANGUAGE RecordWildCards   #-}
 
 module Yuntan.Gateway.Types
-  (
-    App (..)
+  ( App (..)
   , AppKey (..)
   , AppSecret (..)
   , Domain (..)
@@ -18,50 +17,49 @@ import           Data.ByteString      (ByteString)
 import qualified Data.ByteString.Lazy as LB (ByteString)
 import           Data.Int             (Int64)
 import           Data.String          (IsString (..))
-import qualified Data.Text            as T (unpack)
-import qualified Data.Text.Lazy       as LT (Text)
+import qualified Data.Text.Lazy       as LT (Text, fromStrict, null)
 import qualified Network.HTTP.Client  as HTTP
 import           Network.Wai          (Request (..))
 
-newtype AppKey    = AppKey String
+newtype AppKey = AppKey LT.Text
   deriving (Eq)
 
 instance Show AppKey where
-  show (AppKey k) = k
+  show (AppKey k) = show k
 
 instance IsString AppKey where
   fromString = AppKey . fromString
 
 instance FromJSON AppKey where
-  parseJSON = withText "AppKey" $ \t -> pure (AppKey $ T.unpack t)
+  parseJSON = withText "AppKey" $ pure . AppKey . LT.fromStrict
 
 instance ToJSON AppKey where
   toJSON (AppKey k) = toJSON k
 
-newtype AppSecret = AppSecret String
+newtype AppSecret = AppSecret LT.Text
 
 instance Show AppSecret where
-  show (AppSecret s) = s
+  show (AppSecret s) = show s
 
 instance IsString AppSecret where
   fromString = AppSecret . fromString
 
 instance FromJSON AppSecret where
-  parseJSON = withText "AppSecret" $ \t -> pure (AppSecret $ T.unpack t)
+  parseJSON = withText "AppSecret" $ pure . AppSecret . LT.fromStrict
 
 instance ToJSON AppSecret where
   toJSON (AppSecret s) = toJSON s
 
-newtype Domain    = Domain String
+newtype Domain    = Domain LT.Text
 
 instance Show Domain where
-  show (Domain d) = d
+  show (Domain d) = show d
 
 instance IsString Domain where
   fromString = Domain . fromString
 
 instance FromJSON Domain where
-  parseJSON = withText "Domain" $ \t -> pure (Domain $ T.unpack t)
+  parseJSON = withText "Domain" $ pure . Domain . LT.fromStrict
 
 instance ToJSON Domain where
   toJSON (Domain d) = toJSON d
@@ -117,7 +115,7 @@ data Provider = Provider
   }
 
 notNull :: AppKey -> Bool
-notNull (AppKey k) = not $ null k
+notNull (AppKey k) = not $ LT.null k
 
 newProvider :: Provider
 newProvider = Provider

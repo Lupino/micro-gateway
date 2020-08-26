@@ -409,14 +409,14 @@ requireApp Provider{..} proxy = doGetAppByDomain
 
         doGetAppByDomain :: ActionM ()
         doGetAppByDomain = do
-          host <- Domain . LT.unpack . fromMaybe "" <$> header "Host"
+          host <- Domain . fromMaybe "" <$> header "Host"
           valid <- liftIO $ isValidDomain host
           if valid then process host =<< liftIO (getAppByDomain host)
                    else doGetAppByHeaderOrParam
 
         doGetAppByHeaderOrParam :: ActionM ()
         doGetAppByHeaderOrParam = do
-          key <- AppKey . LT.unpack <$> headerOrParam "X-REQUEST-KEY" "key"
+          key <- AppKey <$> headerOrParam "X-REQUEST-KEY" "key"
 
           valid <- liftIO $ isValidKey key
           if valid then process key =<< liftIO (getAppByKey key)
@@ -474,10 +474,10 @@ wsProxyHandler Provider{..} pendingConn =
         rawuri = WS.requestPath requestHead
         pathname = b2t $ urlDecode True $ B.takeWhile (/='?') rawuri
         headers = WS.requestHeaders requestHead
-        host = Domain . B.unpack . fromMaybe "" $ getFromHeader headers "Host"
+        host = Domain . b2t . fromMaybe "" $ getFromHeader headers "Host"
 
         key = AppKey
-          . B.unpack
+          . b2t
           $ getFromHeaderOrParam headers rawuri "X-REQUEST-KEY" "key"
 
         pkey = AppKey $ takeKeyFromPath pathname
