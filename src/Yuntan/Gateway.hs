@@ -34,12 +34,12 @@ import           Data.Bifunctor                (first)
 import           Data.Binary.Builder           (toLazyByteString)
 import qualified Data.ByteString.Char8         as B (ByteString, append,
                                                      breakSubstring, concat,
-                                                     drop, dropWhile, null,
-                                                     pack, takeWhile, unpack)
+                                                     drop, dropWhile, length,
+                                                     null, pack, takeWhile,
+                                                     unpack)
 import qualified Data.ByteString.Lazy          as LB (ByteString, empty,
                                                       fromStrict, length,
                                                       toStrict)
-import           Data.ByteString.Lazy.Search   (replace)
 import           Data.CaseInsensitive          (CI, mk, original)
 import           Data.HashMap.Strict           (delete, insert, lookupDefault)
 import           Data.Int                      (Int64)
@@ -210,19 +210,18 @@ responseHTTP' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
 
       output hdrs st cookie dat
 
-  where output hdrs st cookie dat = do
-          let len  = LB.length dat
+  where output hdrs st cookie dat' = do
+          pathname <- dropKeyFromPath isOnPath <$> param "pathname"
+
+          let dat = replaceData pathname dat'
+              len = LB.length dat
 
           status st
           setHeader "Content-Length" . LT.pack . show $ len
           mergeResponseHeaders ["Content-Type", "Location", "Date"] hdrs
           mergeSetCookie cookie
 
-          pathname <- dropKeyFromPath isOnPath <$> param "pathname"
-
-          if pathname `elem` replaceKeyPages app
-             then raw $ replace rkName key dat
-             else raw dat
+          raw dat
 
           liftIO . afterRequest app len $ statusCode st
 
@@ -230,6 +229,19 @@ responseHTTP' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
 
         rkName = replaceKeyName app
         key = B.pack . show $ appKey app
+
+        replaceData pathname dat =
+          if pathname `elem` replaceKeyPages app
+            then LB.fromStrict $ replaceByteString rkName key $ LB.toStrict dat
+            else dat
+
+replaceByteString :: B.ByteString -> B.ByteString -> B.ByteString -> B.ByteString
+replaceByteString sep sub = go . B.breakSubstring sep
+  where len = B.length sep
+        go :: (B.ByteString, B.ByteString) -> B.ByteString
+        go (bs, "") = bs
+        go (bs, ts) = bs <> sub <> go (B.breakSubstring sep $ B.drop len ts)
+
 
 mergeRequestHeaders :: [CI B.ByteString] -> ActionM RequestHeaders
 mergeRequestHeaders [] = return []
