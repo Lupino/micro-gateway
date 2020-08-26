@@ -46,8 +46,9 @@ import           Data.Int                      (Int64)
 import           Data.Maybe                    (fromMaybe)
 import           Data.Text                     as T (Text, unpack)
 import           Data.Text.Encoding            (decodeUtf8, encodeUtf8)
-import qualified Data.Text.Lazy                as LT (Text, fromStrict, null,
-                                                      pack, toStrict, unpack)
+import qualified Data.Text.Lazy                as LT (Text, fromStrict, length,
+                                                      null, pack, take,
+                                                      toStrict, unpack)
 import           Network.HTTP.Client           (Cookie (..), CookieJar,
                                                 HttpException (..),
                                                 HttpExceptionContent (..),
@@ -57,7 +58,8 @@ import           Network.HTTP.Types            (Method, RequestHeaders,
                                                 ResponseHeaders, Status,
                                                 status204, status400, status404,
                                                 status500, status502, status503,
-                                                status504, statusCode)
+                                                status504, statusCode,
+                                                urlDecode)
 import           Network.Wai                   (Request (rawPathInfo, rawQueryString, requestMethod))
 import qualified Network.WebSockets            as WS (Headers, RequestHead (..),
                                                       ServerApp, acceptRequest,
@@ -144,7 +146,13 @@ mergeSetCookie cj = do
   mapM_ (addHeader "Set-Cookie") cookies
   where cookies = map (LT.fromStrict . decodeUtf8 . LB.toStrict . toLazyByteString . renderSetCookie . cookie2SetCookie) $ destroyCookieJar cj
 
+getPathName :: App -> ActionM LT.Text
+getPathName App{isKeyOnPath=isOnPath} = do
+  dropKeyFromPath isOnPath <$> param "pathname"
 
+getRawUri :: App -> ActionM LT.Text
+getRawUri App{isKeyOnPath=isOnPath} =
+  dropKeyFromPath isOnPath <$> param "rawuri"
 
 responseHTTP :: App -> (HTTP.Request -> HTTP.Manager -> IO (HTTP.Response LB.ByteString)) -> ActionM ()
 responseHTTP app req = do
@@ -154,8 +162,8 @@ responseHTTP app req = do
     Right _ -> responseHTTP' app req
 
 responseHTTP' :: App -> (HTTP.Request -> HTTP.Manager -> IO (HTTP.Response LB.ByteString)) -> ActionM ()
-responseHTTP' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
-  uri <- dropKeyFromPath isOnPath <$> param "rawuri"
+responseHTTP' app@App{onErrorRequest=onError} req = do
+  uri <- LT.unpack <$> getRawUri app
 
   rheaders <- mergeRequestHeaders
     [ "Content-Type"
@@ -211,7 +219,7 @@ responseHTTP' app@App{isKeyOnPath=isOnPath, onErrorRequest=onError} req = do
       output hdrs st cookie dat
 
   where output hdrs st cookie dat' = do
-          pathname <- dropKeyFromPath isOnPath <$> param "pathname"
+          pathname <- getPathName app
 
           let dat = replaceData pathname dat'
               len = LB.length dat
@@ -255,21 +263,21 @@ mergeRequestHeaders (x:xs) = do
 
 verifySignature' :: (App -> ActionM()) -> App -> ActionM ()
 verifySignature' proxy app@App{isSecure=False} = proxy app
-verifySignature' proxy app@App{isSecure=True,isKeyOnPath=isOnPath}  = do
-  sp <- dropKeyFromPath isOnPath <$> param "pathname"
+verifySignature' proxy app@App{isSecure=True}  = do
+  sp <- getPathName app
   if isAllowPages (allowPages app) sp
     then proxy app else verifySignature proxy app
 
-  where isAllowPages :: [String] -> String -> Bool
+  where isAllowPages :: [LT.Text] -> LT.Text -> Bool
         isAllowPages [] _ = False
         isAllowPages (x:xs) p
           | x == p = True
-          | x == take (length x) p = True
+          | x == LT.take (LT.length x) p = True
           | otherwise = isAllowPages xs p
 
 verifySignature :: (App -> ActionM ()) -> App -> ActionM ()
 verifySignature proxy app@App{onlyProxy = True} = proxy app
-verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= do
+verifySignature proxy app@App{appSecret=sec, appKey=key}= do
   ct <- header "Content-Type"
   sec' <- signSecretKey . B.pack $ show sec
   case sec' of
@@ -289,14 +297,14 @@ verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= 
           hsign <- LT.toStrict <$> headerOrParam "X-REQUEST-SIGNATURE" "sign"
           hts   <- LT.toStrict <$> headerOrParam "X-REQUEST-TIME" "timestamp"
           wb    <- body
-          sp <- dropKeyFromPath isOnPath <$> param "pathname"
+          sp    <- getPathName app
           case (decode wb :: Maybe Value) of
             Just (Object v) -> do
               let (String sign) = lookupDefault (String hsign) "sign" v
                   (String ts) = lookupDefault (String hts) "timestamp" v
                   v' = delete "sign" $ insert "timestamp" (String ts)
                                      $ insert "key" (toJSON key)
-                                     $ insert "pathname" (String sp) v
+                                     $ insert "pathname" (String $ LT.toStrict sp) v
                   exceptSign = signJSON secret (Object v')
 
               verifyTime (T.unpack ts) $ equalSign exceptSign sign next
@@ -312,12 +320,12 @@ verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= 
         doVerifyRaw secret next = do
           sign <- LT.toStrict <$> headerOrParam "X-REQUEST-SIGNATURE" "sign"
           timestamp <- headerOrParam "X-REQUEST-TIME" "timestamp"
-          sp <- dropKeyFromPath isOnPath <$> param "pathname"
+          sp <- getPathName app
           wb <- body
           let exceptSign = signRaw secret [ ("key", B.pack $ show key)
                                           , ("timestamp", t2b timestamp)
                                           , ("raw", LB.toStrict wb)
-                                          , ("pathname", sp)
+                                          , ("pathname", t2b sp)
                                           ]
 
           verifyTime (LT.unpack timestamp) $ equalSign exceptSign sign next
@@ -327,7 +335,7 @@ verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= 
           sign <- LT.toStrict <$> headerOrParam "X-REQUEST-SIGNATURE" "sign"
           timestamp <- headerOrParam "X-REQUEST-TIME" "timestamp"
           vv <- params
-          sp <- dropKeyFromPath isOnPath <$> param "pathname"
+          sp <- getPathName app
           let exceptSign = signParams secret $ set "key" (LT.pack $ show key)
                                              $ set "timestamp" timestamp
                                              $ set "pathname" sp
@@ -356,11 +364,11 @@ verifySignature proxy app@App{appSecret=sec, appKey=key, isKeyOnPath=isOnPath}= 
             "JSAPI" -> do
               nonce <- headerOrParam "X-REQUEST-NONCE" "nonce"
               ts <- headerOrParam "X-REQUEST-TIME" "timestamp"
-              sp <- dropKeyFromPath isOnPath <$> param "pathname"
+              sp <- getPathName app
               method <- requestMethod <$> request
               if LT.null nonce then return (Left "Invalid REQUEST NONCE")
                                else return . Right . original . hmacSHA256 (t2b nonce)
-                                      $ B.concat [secret, method, sp, t2b ts]
+                                      $ B.concat [secret, method, t2b sp, t2b ts]
 
             _ -> return (Right secret)
 
@@ -441,7 +449,7 @@ requireApp Provider{..} proxy = doGetAppByDomain
 matchAny :: RoutePattern
 matchAny = function $ \req ->
   Just [ ("rawuri",  b2t $ rawPathInfo req `B.append` rawQueryString req)
-       , ("pathname", b2t $ rawPathInfo req)
+       , ("pathname", b2t $ urlDecode True $ rawPathInfo req)
        ]
 
 --------------------------------------------------------------------------------
@@ -479,7 +487,7 @@ wsProxyHandler Provider{..} pendingConn =
     $ rejectRequest "KEY is required"
   where requestHead = WS.pendingRequest pendingConn
         rawuri = WS.requestPath requestHead
-        pathname = B.takeWhile (/='?') rawuri
+        pathname = b2t $ urlDecode True $ B.takeWhile (/='?') rawuri
         headers = WS.requestHeaders requestHead
         host = Domain . B.unpack . fromMaybe "" $ getFromHeader headers "Host"
 
@@ -490,7 +498,7 @@ wsProxyHandler Provider{..} pendingConn =
         cookies = map (first mk) $ parseCookies $ fromMaybe "" $ getFromHeader headers "Cookie"
         ckey = AppKey . B.unpack $ fromMaybe "" $ getFromHeader cookies "key"
 
-        pkey = AppKey . takeKeyFromPath $ B.unpack pathname
+        pkey = AppKey $ takeKeyFromPath pathname
 
         timestamp = getFromHeaderOrParam headers rawuri "X-REQUEST-TIME" "timestamp"
         ts = fromMaybe (0::Int64) $ readMaybe $ B.unpack timestamp
@@ -539,7 +547,7 @@ wsProxyHandler Provider{..} pendingConn =
           where exceptSign = signRaw secret
                   [ ("key", B.pack $ show rkey)
                   , ("timestamp", timestamp)
-                  , ("pathname", pathname)
+                  , ("pathname", t2b pathname)
                   ]
 
         equalSign :: CI B.ByteString -> Bool
@@ -562,7 +570,7 @@ wsProxyHandler Provider{..} pendingConn =
                     $ B.concat
                       [ secret
                       , method
-                      , dropKeyFromPath isOnPath (B.unpack pathname)
+                      , t2b $ dropKeyFromPath isOnPath pathname
                       , timestamp
                       ]
 
@@ -620,4 +628,5 @@ wsProxyHandler Provider{..} pendingConn =
                   Left (_ :: SomeException) -> killThreads
                   Right bs1 -> atomically $ writeTChan writeChan bs1
 
-          where rawuri' = dropKeyFromPath (isKeyOnPath app) (B.unpack rawuri)
+          where rawuri' = LT.unpack
+                        $ dropKeyFromPath (isKeyOnPath app) (b2t rawuri)

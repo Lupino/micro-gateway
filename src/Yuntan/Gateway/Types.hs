@@ -19,6 +19,7 @@ import qualified Data.ByteString.Lazy as LB (ByteString)
 import           Data.Int             (Int64)
 import           Data.String          (IsString (..))
 import qualified Data.Text            as T (unpack)
+import qualified Data.Text.Lazy       as LT (Text)
 import qualified Network.HTTP.Client  as HTTP
 import           Network.Wai          (Request (..))
 
@@ -83,11 +84,11 @@ data App = App
   , retryError     :: Maybe String
   , prepareWsRequest :: (String -> Int -> IO ()) -> IO ()
   --
-  , replaceKeyPages :: [String]
+  , replaceKeyPages :: [LT.Text]
   , replaceKeyName :: ByteString
 
   -- allow page prefix
-  , allowPages :: [String]
+  , allowPages :: [LT.Text]
   }
 
 

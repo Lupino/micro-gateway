@@ -10,9 +10,9 @@ module Yuntan.Gateway.Utils
 
 import qualified Data.ByteString    as B (ByteString)
 import           Data.Int           (Int64)
-import           Data.String        (IsString, fromString)
 import           Data.Text.Encoding (decodeUtf8, encodeUtf8)
-import qualified Data.Text.Lazy     as LT (Text, fromStrict, toStrict)
+import qualified Data.Text.Lazy     as LT (Text, drop, dropWhile, fromStrict,
+                                           takeWhile, toStrict, unpack)
 import           Data.UnixTime
 import           Foreign.C.Types    (CTime (..))
 
@@ -30,9 +30,9 @@ t2b = encodeUtf8 . LT.toStrict
 flip' :: (a -> b -> c -> d) -> c -> a -> b -> d
 flip' f c a b = f a b c
 
-takeKeyFromPath :: String -> String
-takeKeyFromPath path = takeWhile (/= '/') (drop 1 path)
+takeKeyFromPath :: LT.Text -> String
+takeKeyFromPath = LT.unpack . LT.takeWhile (/= '/') . LT.drop 1
 
-dropKeyFromPath :: IsString a => Bool -> String -> a
-dropKeyFromPath True path  = fromString $ dropWhile (/= '/') (drop 1 path)
-dropKeyFromPath False path = fromString path
+dropKeyFromPath :: Bool -> LT.Text -> LT.Text
+dropKeyFromPath True  = LT.dropWhile (/= '/') . LT.drop 1
+dropKeyFromPath False = id

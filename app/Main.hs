@@ -13,6 +13,7 @@ import qualified Data.ByteString.Lazy            as LB (ByteString)
 import           Data.Maybe                      (fromMaybe)
 import           Data.Streaming.Network.Internal (HostPreference (Host))
 import           Data.Text.Encoding              (encodeUtf8)
+import qualified Data.Text.Lazy                  as LT (Text)
 import qualified Data.Yaml                       as Y
 import qualified Network.HTTP.Client             as HTTP
 import           Network.URI                     (URI (..), URIAuth (..),
@@ -54,11 +55,11 @@ data AppConfig = AppConfig
   , secure       :: Bool
   , proxy        :: Bool -- flag of only proxy
   , wsUrl        :: Maybe String
-  , replacePages :: [String]
+  , replacePages :: [LT.Text]
   , replaceName  :: ByteString
 
   -- allow page prefix
-  , allowPages   :: [String]
+  , allowPages   :: [LT.Text]
   }
 
 data Config = Config
