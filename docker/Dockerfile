@@ -1,5 +1,5 @@
 FROM alpine:3.8
-ENV VERSION v1.0.0.0
+ENV VERSION v1.1.0.0
 RUN apk add --no-cache wget=1.20.3-r0 && \
     wget https://github.com/Lupino/yuntan-gateway/releases/download/$VERSION/simple-gateway-linux-$VERSION.tar.bz2 && \
     apk del wget && \
