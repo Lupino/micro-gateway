@@ -1,0 +1,29 @@
+## Connection pool size
+# connPool: 10
+
+## Connection timeout
+# connTimeout: 10
+
+# listen host
+# host: 127.0.0.1
+
+# listen port
+# port: 3000
+
+# avaliable apps
+appList:
+- key: appkey
+  secret: appsecret
+  ## sign get?
+  secure: false
+  ## only proxy
+  # proxy: false
+  baseUrl: http://127.0.0.1:8000
+  # wsUrl: ws://127.0.0.1:8000
+
+  ## add key to page.
+  # replacePages: []
+  # replaceName: __KEY__
+
+  ## some page not need sign only effect get
+  # allowPages: []
