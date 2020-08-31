@@ -2,8 +2,8 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Yuntan.Gateway
-  ( module Yuntan.Gateway.Types
+module Micro.Gateway
+  ( module Micro.Gateway.Types
   , requireApp
   , verifySignature
   , verifySignature'
@@ -48,6 +48,8 @@ import           Data.Text.Encoding            (decodeUtf8, encodeUtf8)
 import qualified Data.Text.Lazy                as LT (Text, fromStrict, length,
                                                       null, pack, take,
                                                       toStrict, unpack)
+import           Micro.Gateway.Types
+import           Micro.Gateway.Utils
 import           Network.HTTP.Client           (Cookie (..), CookieJar,
                                                 HttpException (..),
                                                 HttpExceptionContent (..),
@@ -79,8 +81,6 @@ import           Web.Scotty                    (ActionM, Param, RoutePattern,
                                                 header, json, param, params,
                                                 raw, request, rescue, setHeader,
                                                 status)
-import           Yuntan.Gateway.Types
-import           Yuntan.Gateway.Utils
 
 
 
@@ -195,7 +195,7 @@ responseHTTP' app@App{onErrorRequest=onError} req = do
           raw LB.empty
           liftIO onError
         other -> do
-          liftIO $ errorM "Yuntan.Gateway.Handler" (show other)
+          liftIO $ errorM "Micro.Gateway.Handler" (show other)
           liftIO onError
           if maxRetry app <= 1 then do
             status status502

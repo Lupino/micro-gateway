@@ -1,4 +1,4 @@
-module Yuntan.Gateway.Utils
+module Micro.Gateway.Utils
   ( getEpochTime
   , b2t
   , t2b

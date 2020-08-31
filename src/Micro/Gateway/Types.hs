@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module Yuntan.Gateway.Types
+module Micro.Gateway.Types
   ( App (..)
   , AppKey (..)
   , AppSecret (..)

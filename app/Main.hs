@@ -15,6 +15,15 @@ import           Data.Streaming.Network.Internal (HostPreference (Host))
 import           Data.Text.Encoding              (encodeUtf8)
 import qualified Data.Text.Lazy                  as LT (Text)
 import qualified Data.Yaml                       as Y
+import           Micro.Gateway                   (matchAny, optionsHandler,
+                                                  proxyDELETEHandler,
+                                                  proxyGETHandler,
+                                                  proxyPOSTHandler,
+                                                  proxyPUTHandler, requireApp,
+                                                  verifySignature,
+                                                  verifySignature',
+                                                  wsProxyHandler)
+import qualified Micro.Gateway                   as GW
 import qualified Network.HTTP.Client             as HTTP
 import           Network.URI                     (URI (..), URIAuth (..),
                                                   parseURI)
@@ -29,15 +38,6 @@ import           Options.Applicative
 import           Web.Scotty                      (ScottyM, delete, get,
                                                   middleware, options, post,
                                                   put, scottyApp)
-import           Yuntan.Gateway                  (matchAny, optionsHandler,
-                                                  proxyDELETEHandler,
-                                                  proxyGETHandler,
-                                                  proxyPOSTHandler,
-                                                  proxyPUTHandler, requireApp,
-                                                  verifySignature,
-                                                  verifySignature',
-                                                  wsProxyHandler)
-import qualified Yuntan.Gateway                  as GW
 
 newtype Options' = Options' {getConfigFile :: String}
 
