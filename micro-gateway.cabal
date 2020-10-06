@@ -1,5 +1,5 @@
 name:                micro-gateway
-version:             1.1.0.0
+version:             1.1.0.1
 synopsis:            A Micro service gateway.
 description:         A Micro service gateway. Support http, and websockets reverse proxy.
 homepage:            https://github.com/Lupino/micro-gateway#readme
