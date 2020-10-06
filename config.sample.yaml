@@ -27,3 +27,5 @@ appList:
 
   ## some page not need sign only effect get
   # allowPages: []
+  ## some page need sign only effect allowPages
+  # denyPages: []

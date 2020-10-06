@@ -264,15 +264,19 @@ verifySignature' :: (App -> ActionM()) -> App -> ActionM ()
 verifySignature' proxy app@App{isSecure=False} = proxy app
 verifySignature' proxy app@App{isSecure=True}  = do
   sp <- getPathName app
-  if isAllowPages (allowPages app) sp
-    then proxy app else verifySignature proxy app
+  if isInPages (allowPages app) sp
+    then
+    if isInPages (denyPages app) sp
+      then verifySignature proxy app
+      else proxy app
+    else verifySignature proxy app
 
-  where isAllowPages :: [LT.Text] -> LT.Text -> Bool
-        isAllowPages [] _ = False
-        isAllowPages (x:xs) p
+  where isInPages :: [LT.Text] -> LT.Text -> Bool
+        isInPages [] _ = False
+        isInPages (x:xs) p
           | x == p = True
           | x == LT.take (LT.length x) p = True
-          | otherwise = isAllowPages xs p
+          | otherwise = isInPages xs p
 
 verifySignature :: (App -> ActionM ()) -> App -> ActionM ()
 verifySignature proxy app@App{onlyProxy = True} = proxy app

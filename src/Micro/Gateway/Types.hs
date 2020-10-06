@@ -85,8 +85,10 @@ data App = App
   , replaceKeyPages :: [LT.Text]
   , replaceKeyName :: ByteString
 
-  -- allow page prefix
+  -- allow page prefix only effect get pages
   , allowPages :: [LT.Text]
+  -- deny page prefix only effect allow pages
+  , denyPages :: [LT.Text]
   }
 
 
@@ -103,6 +105,7 @@ newApp appKey appSecret isSecure onlyProxy = App
   , replaceKeyPages = []
   , replaceKeyName = "__KEY__"
   , allowPages = []
+  , denyPages = []
   , ..
   }
 

@@ -60,6 +60,8 @@ data AppConfig = AppConfig
 
   -- allow page prefix
   , allowPages   :: [LT.Text]
+  -- deny page prefix
+  , denyPages    :: [LT.Text]
   }
 
 data Config = Config
@@ -81,6 +83,7 @@ instance FromJSON AppConfig where
     proxy        <- o .:? "proxy"        .!= False
     wsUrl        <- o .:? "wsUrl"
     allowPages   <- o .:? "allowPages"   .!= []
+    denyPages    <- o .:? "denyPages"    .!= []
     replacePages <- o .:? "replacePages" .!= []
     rname        <- o .:? "replaceName"  .!= "__KEY__"
     return AppConfig
@@ -141,6 +144,7 @@ getAppAndInitail mgr configs k =
             { GW.doRequest        = processRequest mgr baseUrl
             , GW.prepareWsRequest = processWsRequest $ fromMaybe baseUrl wsUrl
             , GW.allowPages       = allowPages
+            , GW.denyPages        = denyPages
             , GW.replaceKeyName   = replaceName
             , GW.replaceKeyPages  = replacePages
             }
