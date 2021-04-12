@@ -478,6 +478,15 @@ wsProxyHandler Provider{..} pendingConn =
         rawuri = WS.requestPath requestHead
         pathname = b2t $ urlDecode True $ B.takeWhile (/='?') rawuri
         headers = WS.requestHeaders requestHead
+        headers0
+          = removeFromHeader "Host"
+          . removeFromHeader "Connection"
+          . removeFromHeader "Upgrade"
+          . removeFromHeader "Sec-WebSocket-Version"
+          . removeFromHeader "Sec-WebSocket-Key"
+          . removeFromHeader "Sec-WebSocket-Extensions"
+          $ headers
+
         host = Domain . b2t . fromMaybe "" $ getFromHeader headers "Host"
 
         key = AppKey
@@ -589,12 +598,12 @@ wsProxyHandler Provider{..} pendingConn =
             bs0 <- try $ WS.receiveDataMessage conn
             case bs0 of
               Left (_ :: SomeException) -> killThreads
-              Right bs1 -> atomically $ writeTChan readChan bs1
+              Right bs1                 -> atomically $ writeTChan readChan bs1
 
           addThread thread3
 
           prepareWsRequest app $ \h p -> do
-            WS.runClientWith h p rawuri' WS.defaultConnectionOptions (removeFromHeader "Host" headers) $ \pconn -> do
+            WS.runClientWith h p rawuri' WS.defaultConnectionOptions headers0 $ \pconn -> do
               thread4 <- forkIO $ forever $ do
                 bs <- atomically $ readTChan readChan
                 WS.sendDataMessage pconn bs
