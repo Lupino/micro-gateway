@@ -10,7 +10,8 @@ import           Data.Aeson                      (FromJSON, parseJSON,
                                                   (.:?))
 import           Data.ByteString                 (ByteString)
 import qualified Data.ByteString.Lazy            as LB (ByteString)
-import           Data.Maybe                      (fromMaybe)
+import           Data.List                       (find)
+import           Data.Maybe                      (fromMaybe, isJust)
 import           Data.Streaming.Network.Internal (HostPreference (Host))
 import           Data.Text.Encoding              (encodeUtf8)
 import qualified Data.Text.Lazy                  as LT (Text)
@@ -51,6 +52,7 @@ parser = Options' <$> strOption (long "config"
 data AppConfig = AppConfig
   { key          :: GW.AppKey
   , secret       :: GW.AppSecret
+  , domain       :: GW.Domain
   , baseUrl      :: String
   , secure       :: Bool
   , proxy        :: Bool -- flag of only proxy
@@ -78,6 +80,7 @@ instance FromJSON AppConfig where
   parseJSON = withObject "AppConfig" $ \o -> do
     key          <- o .:  "key"
     secret       <- o .:  "secret"
+    domain       <- o .:? "domain"       .!= GW.Domain ""
     baseUrl      <- o .:  "baseUrl"
     secure       <- o .:? "secure"       .!= False
     proxy        <- o .:? "proxy"        .!= False
@@ -101,6 +104,10 @@ instance FromJSON Config where
     return Config{..}
 
 
+isValid :: Eq a => (AppConfig -> a) -> [AppConfig] -> a -> IO Bool
+isValid f xs k = return . isJust $ find ((== k) . f) xs
+
+
 main :: IO ()
 main = execParser opts >>= program
   where
@@ -121,7 +128,10 @@ program Options'{getConfigFile=configPath} = do
                 }
 
       let provider = GW.newProvider
-            { GW.getAppByKey = getAppAndInitail mgr appList
+            { GW.getAppByKey = getAppAndInitail mgr appList key
+            , GW.getAppByDomain = getAppAndInitail mgr appList domain
+            , GW.isValidDomain = isValid domain appList
+            , GW.isValidKey = isValid key appList
             }
 
       sapp <- scottyApp $ application provider
@@ -129,27 +139,22 @@ program Options'{getConfigFile=configPath} = do
       W.runSettings (W.setPort port . W.setHost (Host host) $ W.defaultSettings) app
 
 
-findApp :: [AppConfig] -> GW.AppKey -> Maybe AppConfig
-findApp [] _ = Nothing
-findApp (x:xs) k = if key x == k then Just x
-                                 else findApp xs k
+getAppAndInitail :: Eq a => HTTP.Manager -> [AppConfig] -> (AppConfig -> a) -> a -> IO (Maybe GW.App)
+getAppAndInitail mgr configs f k =
+  case find ((==k) . f) configs of
+    Nothing     -> return Nothing
+    Just config -> return . Just $ toApp mgr config
 
-getAppAndInitail :: HTTP.Manager -> [AppConfig] -> GW.AppKey -> IO (Maybe GW.App)
-getAppAndInitail mgr configs k =
-  case findApp configs k of
-    Nothing -> return Nothing
-    Just AppConfig{..} -> do
-      let app = GW.newApp key secret secure proxy
-          app' = app
-            { GW.doRequest        = processRequest mgr baseUrl
-            , GW.prepareWsRequest = processWsRequest $ fromMaybe baseUrl wsUrl
-            , GW.allowPages       = allowPages
-            , GW.denyPages        = denyPages
-            , GW.replaceKeyName   = replaceName
-            , GW.replaceKeyPages  = replacePages
-            }
-
-      return $ Just app'
+toApp :: HTTP.Manager -> AppConfig -> GW.App
+toApp mgr AppConfig {..} =
+  (GW.newApp key secret secure proxy)
+    { GW.doRequest        = processRequest mgr baseUrl
+    , GW.prepareWsRequest = processWsRequest $ fromMaybe baseUrl wsUrl
+    , GW.allowPages       = allowPages
+    , GW.denyPages        = denyPages
+    , GW.replaceKeyName   = replaceName
+    , GW.replaceKeyPages  = replacePages
+    }
 
 processRequest :: HTTP.Manager -> String
                -> (HTTP.Request -> HTTP.Manager -> IO (HTTP.Response LB.ByteString))

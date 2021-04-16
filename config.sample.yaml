@@ -16,6 +16,8 @@ appList:
   secret: appsecret
   ## sign get?
   secure: false
+  ## domain
+  # domain: example.com
   ## only proxy
   # proxy: false
   baseUrl: http://127.0.0.1:8000

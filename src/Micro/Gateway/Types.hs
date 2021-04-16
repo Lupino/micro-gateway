@@ -51,6 +51,7 @@ instance ToJSON AppSecret where
   toJSON (AppSecret s) = toJSON s
 
 newtype Domain = Domain {unDomain :: LT.Text}
+  deriving (Eq)
 
 instance Show Domain where
   show = LT.unpack . unDomain
