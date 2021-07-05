@@ -15,7 +15,7 @@
         "bifunctors".flags.tagged = true;
         "bifunctors".flags.semigroups = true;
         "ghc-prim".revision = (((hackage."ghc-prim")."0.6.1").revisions).default;
-        "warp".revision = (((hackage."warp")."3.3.17").revisions).default;
+        "warp".revision = (((hackage."warp")."3.3.16").revisions).default;
         "warp".flags.network-bytestring = false;
         "warp".flags.allow-sendfilefd = true;
         "warp".flags.warp-debug = false;
@@ -28,7 +28,7 @@
         "ansi-terminal".flags.example = false;
         "unliftio-core".revision = (((hackage."unliftio-core")."0.2.0.1").revisions).default;
         "exceptions".revision = (((hackage."exceptions")."0.10.4").revisions).default;
-        "time-compat".revision = (((hackage."time-compat")."1.9.6").revisions).default;
+        "time-compat".revision = (((hackage."time-compat")."1.9.5").revisions).default;
         "time-compat".flags.old-locale = false;
         "yaml".revision = (((hackage."yaml")."0.11.5.0").revisions).default;
         "yaml".flags.no-exe = true;
@@ -39,7 +39,7 @@
         "mono-traversable".revision = (((hackage."mono-traversable")."1.0.15.1").revisions).default;
         "fast-logger".revision = (((hackage."fast-logger")."3.0.5").revisions).default;
         "cryptohash".revision = (((hackage."cryptohash")."0.11.9").revisions).default;
-        "call-stack".revision = (((hackage."call-stack")."0.4.0").revisions).default;
+        "call-stack".revision = (((hackage."call-stack")."0.3.0").revisions).default;
         "simple-sendfile".revision = (((hackage."simple-sendfile")."0.2.30").revisions).default;
         "simple-sendfile".flags.allow-bsd = true;
         "template-haskell".revision = (((hackage."template-haskell")."2.16.0.0").revisions).default;
@@ -53,8 +53,7 @@
         "vector".flags.wall = false;
         "conduit".revision = (((hackage."conduit")."1.3.4.1").revisions).default;
         "word8".revision = (((hackage."word8")."0.1.3").revisions).default;
-        "network".revision = (((hackage."network")."3.1.2.2").revisions).default;
-        "network".flags.devel = false;
+        "network".revision = (((hackage."network")."3.1.1.1").revisions).default;
         "HUnit".revision = (((hackage."HUnit")."1.6.2.0").revisions).default;
         "wai-app-static".revision = (((hackage."wai-app-static")."3.1.7.2").revisions).default;
         "wai-app-static".flags.print = false;
@@ -131,13 +130,12 @@
         "integer-logarithms".revision = (((hackage."integer-logarithms")."1.0.3.1").revisions).default;
         "integer-logarithms".flags.check-bounds = false;
         "integer-logarithms".flags.integer-gmp = true;
-        "http-client".revision = (((hackage."http-client")."0.7.8").revisions).default;
+        "http-client".revision = (((hackage."http-client")."0.6.4.1").revisions).default;
         "http-client".flags.network-uri = true;
         "x509".revision = (((hackage."x509")."1.7.5").revisions).default;
         "containers".revision = (((hackage."containers")."0.6.4.1").revisions).default;
         "regex-compat".revision = (((hackage."regex-compat")."0.95.2.1").revisions).default;
         "byteorder".revision = (((hackage."byteorder")."1.0.4").revisions).default;
-        "signature".revision = (((hackage."signature")."0.1.1.0").revisions).default;
         "tagged".revision = (((hackage."tagged")."0.8.6.1").revisions).default;
         "tagged".flags.deepseq = true;
         "tagged".flags.transformers = true;
@@ -152,7 +150,7 @@
         "transformers-compat".flags.five-three = true;
         "transformers-compat".flags.three = false;
         "transformers-compat".flags.mtl = true;
-        "memory".revision = (((hackage."memory")."0.16.0").revisions).default;
+        "memory".revision = (((hackage."memory")."0.15.0").revisions).default;
         "memory".flags.support_basement = true;
         "memory".flags.support_bytestring = true;
         "memory".flags.support_foundation = true;
@@ -192,21 +190,22 @@
         "nats".flags.hashable = true;
         "pem".revision = (((hackage."pem")."0.2.4").revisions).default;
         "file-embed".revision = (((hackage."file-embed")."0.0.14.0").revisions).default;
-        "colour".revision = (((hackage."colour")."2.3.6").revisions).default;
+        "colour".revision = (((hackage."colour")."2.3.5").revisions).default;
         "blaze-html".revision = (((hackage."blaze-html")."0.9.1.2").revisions).default;
-        "hashable".revision = (((hackage."hashable")."1.3.2.0").revisions).default;
+        "hashable".revision = (((hackage."hashable")."1.3.0.0").revisions).default;
+        "hashable".flags.sse2 = true;
+        "hashable".flags.sse41 = false;
         "hashable".flags.integer-gmp = true;
-        "hashable".flags.random-initial-seed = false;
+        "hashable".flags.examples = false;
         "clock".revision = (((hackage."clock")."0.8.2").revisions).default;
         "clock".flags.llvm = false;
-        "hexstring".revision = (((hackage."hexstring")."0.11.1").revisions).default;
         "comonad".revision = (((hackage."comonad")."5.0.8").revisions).default;
         "comonad".flags.distributive = true;
         "comonad".flags.indexed-traversable = true;
         "comonad".flags.containers = true;
         "assoc".revision = (((hackage."assoc")."1.0.2").revisions).default;
         "asn1-parse".revision = (((hackage."asn1-parse")."0.9.5").revisions).default;
-        "base64-bytestring".revision = (((hackage."base64-bytestring")."1.2.0.1").revisions).default;
+        "base64-bytestring".revision = (((hackage."base64-bytestring")."1.1.0.0").revisions).default;
         "regex-base".revision = (((hackage."regex-base")."0.94.0.1").revisions).default;
         "Cabal".revision = (((hackage."Cabal")."3.2.1.0").revisions).default;
         "cryptonite".revision = (((hackage."cryptonite")."0.29").revisions).default;
@@ -272,9 +271,19 @@
         };
       };
   extras = hackage:
-    { packages = { micro-gateway = ./.plan.nix/micro-gateway.nix; }; };
+    {
+      packages = {
+        micro-gateway = ./.plan.nix/micro-gateway.nix;
+        signature = ./.plan.nix/signature.nix;
+        };
+      };
   modules = [
     ({ lib, ... }:
-      { packages = { "micro-gateway" = { flags = {}; }; }; })
+      {
+        packages = {
+          "micro-gateway" = { flags = {}; };
+          "signature" = { flags = {}; };
+          };
+        })
     ];
   }
