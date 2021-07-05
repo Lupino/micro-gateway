@@ -1,19 +1,35 @@
-{ static ? false, compiler ? "default" }:
-
+{ compiler-nix-name ? "ghc8105" }:
 let
-  config = import ./nix/config.nix {static=static;};
-  pkgs = config.pkgs;
+  # Read in the Niv sources
+  sources = import ./nix/sources.nix {};
+  # If ./nix/sources.nix file is not found run:
+  #   niv init
+  #   niv add input-output-hk/haskell.nix -n haskellNix
 
-  haskellPackages = if compiler == "default"
-                       then pkgs.haskellPackages
-                       else pkgs.haskell.packages.${compiler};
+  # Fetch the haskell.nix commit we have pinned with Niv
+  haskellNix = import sources.haskellNix { };
+  # If haskellNix is not found run:
+  #   niv add input-output-hk/haskell.nix -n haskellNix
 
-  yuntan-common-signature       = haskellPackages.callPackage ./nix/yuntan-common-signature.nix {};
-  yuntan-gateway = haskellPackages.callPackage ./nix/yuntan-gateway.nix {
-    inherit yuntan-common-signature;
-    inherit static;
-  };
-
-in {
-  inherit yuntan-gateway;
-}
+  # Import nixpkgs and pass the haskell.nix provided nixpkgsArgs
+  pkgs = import
+    # haskell.nix provides access to the nixpkgs pins which are used by our CI,
+    # hence you will be more likely to get cache hits when using these.
+    # But you can also just use your own, e.g. '<nixpkgs>'.
+    sources.nixpkgs
+    # These arguments passed to nixpkgs, include some patches and also
+    # the haskell.nix functionality itself as an overlay.
+    haskellNix.nixpkgsArgs;
+in pkgs.haskell-nix.cabalProject {
+    # 'cleanGit' cleans a source directory based on the files known by git
+    src = pkgs.haskell-nix.haskellLib.cleanGit {
+      src = ./.;
+      name = "micro-gateway";
+    };
+    index-state = "2021-06-30T00:00:00Z";
+    index-sha256 = "0f6213f13984148dbf6ad865576e3a9ebb330751b30b49a7f6e02697865cbb01";
+    plan-sha256 = if compiler-nix-name == "ghc8105" then "0lc2ypkkzwc6nf0s8zpgxz9zn8wdmnww3q8rp1h5zak9q2yxk8sb" else null;
+    materialized = if compiler-nix-name == "ghc8105" then ./nix/materialized else null;
+    # Specify the GHC version to use.
+    compiler-nix-name = compiler-nix-name;
+  }
