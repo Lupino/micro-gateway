@@ -30,6 +30,7 @@ import           Crypto.Signature              (hmacSHA256, signJSON,
                                                 signParams, signRaw)
 import           Data.Aeson                    (Value (..), decode, object,
                                                 toJSON, (.=))
+import           Data.Aeson.KeyMap             (delete, insert, lookup)
 import           Data.Binary.Builder           (toLazyByteString)
 import qualified Data.ByteString.Char8         as B (ByteString, append,
                                                      breakSubstring, concat,
@@ -40,7 +41,6 @@ import qualified Data.ByteString.Lazy          as LB (ByteString, empty,
                                                       fromStrict, length,
                                                       toStrict)
 import           Data.CaseInsensitive          (CI, mk, original)
-import           Data.HashMap.Strict           (delete, insert, lookupDefault)
 import           Data.Int                      (Int64)
 import           Data.Maybe                    (fromMaybe)
 import           Data.Text                     as T (Text, unpack)
@@ -71,6 +71,7 @@ import qualified Network.WebSockets            as WS (Headers, RequestHead (..),
                                                       runClientWith,
                                                       sendDataMessage)
 import           Network.WebSockets.Connection as WS (pingThread)
+import           Prelude                       hiding (lookup)
 import           System.Log.Logger             (errorM)
 import           Text.Read                     (readMaybe)
 import           Web.Cookie                    (SetCookie (..),
@@ -232,7 +233,7 @@ responseHTTP' app@App{onErrorRequest=onError} req = do
 
           liftIO . afterRequest app len $ statusCode st
 
-        prepareReq h f req' mgr = f (req' {HTTP.requestHeaders = h, HTTP.redirectCount = 0}) mgr
+        prepareReq h f req' = f (req' {HTTP.requestHeaders = h, HTTP.redirectCount = 0})
 
         rkName = replaceKeyName app
         key = t2b . unAppKey $ appKey app
@@ -303,8 +304,8 @@ verifySignature proxy app@App{appSecret=sec, appKey=key}= do
           sp    <- getPathName app
           case (decode wb :: Maybe Value) of
             Just (Object v) -> do
-              let (String sign) = lookupDefault (String hsign) "sign" v
-                  (String ts) = lookupDefault (String hts) "timestamp" v
+              let (String sign) = fromMaybe (String hsign) $ lookup "sign" v
+                  (String ts) = fromMaybe (String hts) $ lookup "timestamp" v
                   v' = delete "sign" $ insert "timestamp" (String ts)
                                      $ insert "key" (toJSON key)
                                      $ insert "pathname" (String $ LT.toStrict sp) v
